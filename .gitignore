@@ -1,0 +1,76 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+secret.json
+secrets.json
+**/secret.json
+**/secrets.json
+config.json
+**/config.json
+
+# Engram data directory — local DB, vectors, config with secrets
+~/.engram/
+.engram/
+
+# Session files
+*.session
+*.session.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Internal docs — not for public repo
+# Rule: only README.md + SKILL.md at repo root are tracked.
+# Everything else (CLAUDE.md, AUDIT.md, docs/, src/**/README.md, ...) stays local-only.
+*.md
+!/README.md
+!/SKILL.md
+docs/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Voice temp files
+engram_voice_*
+
+# Personal debug scripts (not for public repo)
+src/scripts/test-*.ts
+src/scripts/test-chunks-*.ts
+src/scripts/index-doc.ts
+
+# Personal addons — anything in src/addons/ EXCEPT the README and example template.
+# Excluded from public build via tsconfig.public.json. See src/addons/README.md.
+src/addons/*
+!src/addons/README.md
+!src/addons/example.ts
+!src/addons/.gitkeep
+
+# Private/premium extensions — ONLY ships on hosted Engram (not in OSS repo)
+src/private/
+
+# Whisper audio test fixtures (generated locally, not committed)
+src/memory/modules/audio/tests/fixtures/*.wav
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+site/
+# .github/ was previously ignored — now tracked for CI workflows
+

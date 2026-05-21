@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  EngramMCP macOS LaunchAgent template.
+  Variables substituted by install.sh or `engram-mcp service install`:
+    {{BINARY_PATH}}  — absolute path to the engram-mcp binary
+    {{HOME}}         — user home directory
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ravolelabs.engram</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BINARY_PATH}}</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.engram/logs/engram.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.engram/logs/engram.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:{{HOME}}/.local/bin</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+  </dict>
+
+  <!-- Give the process up to 30 s to exit cleanly before SIGKILL -->
+  <key>ExitTimeOut</key>
+  <integer>30</integer>
+
+  <!-- Throttle respawning: wait at least 10 s between restarts -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>

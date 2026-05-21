@@ -1,0 +1,74 @@
+name: Publish to npm
+
+# Two publish paths:
+#   • tag v*.*.* on main  → publishes with the "latest" dist-tag (stable)
+#   • push to staging      → publishes with the "staging" dist-tag (preview)
+#
+# Both use OIDC via npm Trusted Publishing — no token stored anywhere.
+# Configure at: https://www.npmjs.com/package/@raviolelabs/engram-mcp/access
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - staging
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    name: Build + publish @raviolelabs/engram-mcp
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Upgrade npm to v11+ for Trusted Publishing OIDC
+        # Self-upgrade can fail with MODULE_NOT_FOUND on some bundled npm versions —
+        # pin a known-good 11.x build and use --force to bypass the bootstrap quirk.
+        run: npm install -g npm@11.5.2 --force
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches package.json (release path only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "Tag $TAG_VERSION matches package.json version $PKG_VERSION ✓"
+
+      - name: Set staging prerelease version (staging path only)
+        if: github.ref == 'refs/heads/staging'
+        run: |
+          # Bump the patch + add a staging.<sha> prerelease suffix so each push gets a unique version
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          STAGING_VERSION="${BASE_VERSION}-staging.${SHORT_SHA}"
+          npm version "$STAGING_VERSION" --no-git-tag-version
+          echo "Staging version: $STAGING_VERSION"
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm (latest tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm publish --provenance --access public --tag latest
+
+      - name: Publish to npm (staging tag)
+        if: github.ref == 'refs/heads/staging'
+        run: npm publish --provenance --access public --tag staging

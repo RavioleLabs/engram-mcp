@@ -1,0 +1,206 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Build all 5 platform binaries ────────────────────────────────────────────
+  build:
+    name: Build ${{ matrix.target.os }}-${{ matrix.target.arch }}
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { os: darwin,  arch: arm64, runner: macos-14,    output: engram-mcp-darwin-arm64   }
+          - { os: darwin,  arch: x64,   runner: macos-13,    output: engram-mcp-darwin-x64     }
+          - { os: linux,   arch: x64,   runner: ubuntu-22.04, output: engram-mcp-linux-x64     }
+          - { os: linux,   arch: arm64, runner: ubuntu-22.04, output: engram-mcp-linux-arm64   }
+          - { os: win,     arch: x64,   runner: ubuntu-22.04, output: engram-mcp-win-x64.exe   }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Build client
+        run: npm run build:client
+
+      - name: Pack binary (${{ matrix.target.output }})
+        env:
+          PKG_TARGET: node22-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          PKG_OUTPUT: dist/bin/${{ matrix.target.output }}
+        run: |
+          mkdir -p dist/bin
+          npx @yao-pkg/pkg dist/scripts/serve.js \
+            --target "$PKG_TARGET" \
+            --output "$PKG_OUTPUT" \
+            --compress GZip
+          # Generate SHA256 sidecar
+          if command -v sha256sum > /dev/null 2>&1; then
+            sha256sum "$PKG_OUTPUT" | awk '{print $1}' > "${PKG_OUTPUT}.sha256"
+          else
+            shasum -a 256 "$PKG_OUTPUT" | awk '{print $1}' > "${PKG_OUTPUT}.sha256"
+          fi
+          echo "Built: $PKG_OUTPUT"
+          ls -lh dist/bin/
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target.output }}
+          path: |
+            dist/bin/${{ matrix.target.output }}
+            dist/bin/${{ matrix.target.output }}.sha256
+          retention-days: 7
+
+  # ── Create GitHub Release ─────────────────────────────────────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/bin
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -lh dist/bin/
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Find the previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p')
+          CURRENT_TAG="${{ github.ref_name }}"
+
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..${CURRENT_TAG}"
+            echo "Changelog from $PREV_TAG to $CURRENT_TAG"
+          else
+            RANGE="HEAD"
+            echo "First release — full history"
+          fi
+
+          # Build changelog
+          CHANGELOG=$(git log "$RANGE" \
+            --pretty=format:"- %s (%h)" \
+            --no-merges \
+            2>/dev/null || git log --pretty=format:"- %s (%h)" --no-merges -20)
+
+          # Write to file to preserve newlines
+          {
+            echo "CHANGELOG<<EOF"
+            echo "$CHANGELOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: false
+          name: "EngramMCP ${{ github.ref_name }}"
+          body: |
+            ## EngramMCP ${{ github.ref_name }}
+
+            ### Install
+
+            **macOS / Linux (one-liner):**
+            ```bash
+            curl -fsSL https://engram-mcp.com/install.sh | sh
+            ```
+
+            **Homebrew:**
+            ```bash
+            brew tap RavioleLabs/engram
+            brew install engram
+            ```
+
+            **Windows (PowerShell):**
+            ```powershell
+            iex (iwr https://engram-mcp.com/install.ps1).Content
+            ```
+
+            ### Changes since last release
+
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ### Binaries
+
+            | Platform | File |
+            |----------|------|
+            | macOS Apple Silicon | `engram-mcp-darwin-arm64` |
+            | macOS Intel | `engram-mcp-darwin-x64` |
+            | Linux x64 | `engram-mcp-linux-x64` |
+            | Linux ARM64 | `engram-mcp-linux-arm64` |
+            | Windows x64 | `engram-mcp-win-x64.exe` |
+
+            > **Note:** Binaries are unsigned (no Apple Developer Program enrollment).
+            > On macOS, install via Homebrew or the curl installer to bypass Gatekeeper automatically.
+            > Manual binary installs may require: `xattr -d com.apple.quarantine engram-mcp-darwin-*`
+
+            ### Checksums
+
+            SHA256 checksums are provided as `.sha256` sidecar files for each binary.
+
+          files: |
+            dist/bin/engram-mcp-darwin-arm64
+            dist/bin/engram-mcp-darwin-arm64.sha256
+            dist/bin/engram-mcp-darwin-x64
+            dist/bin/engram-mcp-darwin-x64.sha256
+            dist/bin/engram-mcp-linux-x64
+            dist/bin/engram-mcp-linux-x64.sha256
+            dist/bin/engram-mcp-linux-arm64
+            dist/bin/engram-mcp-linux-arm64.sha256
+            dist/bin/engram-mcp-win-x64.exe
+            dist/bin/engram-mcp-win-x64.exe.sha256
+
+  # ── Update Homebrew formula SHA (auto PR) ─────────────────────────────────────
+  homebrew-pr:
+    name: Trigger Homebrew formula update
+    needs: release
+    runs-on: ubuntu-22.04
+    # Only run on final releases (not pre-release tags like v1.0.0-beta.1)
+    if: "!contains(github.ref_name, '-')"
+
+    steps:
+      - name: Dispatch formula-update workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_PAT }}
+          repository: RavioleLabs/homebrew-engram
+          event-type: formula-update
+          client-payload: |
+            {
+              "version": "${{ github.ref_name }}",
+              "tag": "${{ github.ref_name }}"
+            }
+        continue-on-error: true  # Don't fail the release if tap PAT not set yet

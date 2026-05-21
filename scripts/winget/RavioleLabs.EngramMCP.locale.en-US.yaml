@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: RavioleLabs.EngramMCP
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: Raviole Labs
+PublisherUrl: https://raviolelabs.com
+PublisherSupportUrl: https://github.com/RavioleLabs/engram-mcp/issues
+PrivacyUrl: https://engram-mcp.com/privacy
+Author: Raviole Labs
+PackageName: EngramMCP
+PackageUrl: https://engram-mcp.com
+License: MIT
+LicenseUrl: https://github.com/RavioleLabs/engram-mcp/blob/main/LICENSE
+Copyright: "Copyright (c) 2025 Raviole Labs"
+CopyrightUrl: https://github.com/RavioleLabs/engram-mcp/blob/main/LICENSE
+ShortDescription: Local-first semantic memory layer for AI agents (MCP server)
+Description: |-
+  EngramMCP is a Model Context Protocol (MCP) server that gives any AI agent
+  persistent, searchable memory. It ingests from notes, conversations, Google Drive,
+  Notion, YouTube, Obsidian, audio files, and custom types.
+
+  All vectors and content stay on your machine. Embeddings run locally via Ollama
+  by default — no cloud account required for basic use.
+
+  Supports Claude Code, Cursor, and any MCP-compatible agent runtime.
+Moniker: engram-mcp
+Tags:
+  - ai
+  - mcp
+  - memory
+  - llm
+  - claude
+  - cursor
+  - agents
+  - local-first
+  - ollama
+  - embeddings
+  - rag
+ReleaseNotesUrl: https://github.com/RavioleLabs/engram-mcp/releases/tag/v0.1.0
+Documentations:
+  - DocumentLabel: Documentation
+    DocumentUrl: https://engram-mcp.com/docs
+  - DocumentLabel: GitHub Repository
+    DocumentUrl: https://github.com/RavioleLabs/engram-mcp
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

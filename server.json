@@ -1,0 +1,48 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.RavioleLabs/engram-mcp",
+  "title": "EngramMCP",
+  "description": "Local-first semantic memory MCP for AI agents. 21 tools, Notion/Drive/YouTube/Obsidian/voice.",
+  "repository": {
+    "url": "https://github.com/RavioleLabs/engram-mcp",
+    "source": "github"
+  },
+  "homepage": "https://engram-mcp.com",
+  "version": "0.2.4",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@raviolelabs/engram-mcp",
+      "version": "0.2.4",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "node",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "name": "command",
+          "value": "engram-mcp",
+          "description": "Engram MCP server entry binary"
+        }
+      ]
+    }
+  ],
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "memory",
+    "rag",
+    "semantic-search",
+    "local-first",
+    "embeddings",
+    "notion",
+    "google-drive",
+    "youtube",
+    "obsidian",
+    "ai-agents",
+    "claude",
+    "cursor"
+  ],
+  "categories": ["memory", "knowledge", "ai-agents"]
+}

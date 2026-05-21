@@ -1,0 +1,48 @@
+<!--
+  EngramMCP NSSM service XML config template.
+  Variables substituted by install.ps1 or `engram-mcp service install`:
+    {{BINARY_PATH}}  — absolute path to engram-mcp.exe
+    {{LOG_DIR}}      — path for stdout/stderr logs (e.g. %USERPROFILE%\.engram\logs)
+
+  Usage (manual):
+    nssm install EngramMCP "{{BINARY_PATH}}"
+    nssm set EngramMCP AppStdout "{{LOG_DIR}}\engram.log"
+    nssm set EngramMCP AppStderr "{{LOG_DIR}}\engram.err"
+    nssm set EngramMCP Start SERVICE_AUTO_START
+    nssm start EngramMCP
+
+  Or import directly via: nssm import EngramMCP engram-windows-service.xml
+-->
+<service>
+  <!-- Service identity -->
+  <name>EngramMCP</name>
+  <displayname>EngramMCP — local memory server</displayname>
+  <description>Local-first semantic memory layer for AI agents (engram-mcp.com).</description>
+
+  <!-- Executable -->
+  <executable>{{BINARY_PATH}}</executable>
+
+  <!-- Logging -->
+  <log>
+    <mode>rotate</mode>
+    <stdout>{{LOG_DIR}}\engram.log</stdout>
+    <stderr>{{LOG_DIR}}\engram.err</stderr>
+    <!-- Rotate at 10 MB -->
+    <rotatebytes>10485760</rotatebytes>
+    <!-- Keep 5 rotated files -->
+    <rotatefiles>5</rotatefiles>
+    <rotateonline>true</rotateonline>
+  </log>
+
+  <!-- Startup type -->
+  <startmode>Automatic</startmode>
+
+  <!-- Recovery actions: restart on crash with 5 s delay -->
+  <failure>
+    <reset>86400</reset>
+    <actions>restart/5000/restart/5000/restart/5000</actions>
+  </failure>
+
+  <!-- Shutdown grace period (ms) -->
+  <stoptimeout>30000</stoptimeout>
+</service>

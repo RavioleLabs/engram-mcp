@@ -1,0 +1,12 @@
+src/
+docs/
+scripts/
+.github/
+.git/
+.vscode/
+.idea/
+*.test.ts
+**/*.test.ts
+tests/
+node_modules/
+*.log

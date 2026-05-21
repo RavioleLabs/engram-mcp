@@ -1,0 +1,38 @@
+# EngramMCP systemd user service template.
+# Variables substituted by install.sh or `engram-mcp service install`:
+#   {{BINARY_PATH}}  — absolute path to the engram-mcp binary
+#   {{HOME}}         — user home directory
+#
+# Install:
+#   Install to ~/.config/systemd/user/engram.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now engram.service
+#
+# Logs:
+#   journalctl --user -u engram -f
+#   or: tail -f ~/.engram/logs/engram.log
+
+[Unit]
+Description=EngramMCP local memory server
+Documentation=https://engram-mcp.com/docs
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={{BINARY_PATH}}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+StandardOutput=append:{{HOME}}/.engram/logs/engram.log
+StandardError=append:{{HOME}}/.engram/logs/engram.err
+
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:{{HOME}}/.local/bin
+Environment=HOME={{HOME}}
+
+# Security hardening (non-breaking subset safe for user services)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
