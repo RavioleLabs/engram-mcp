@@ -163,14 +163,31 @@ export function startBridgeClient(opts: BridgeClientOptions): BridgeClient {
         });
 
         ws.on('message', async (data) => {
-          let req: TunnelRequest;
+          let msg: unknown;
           try {
-            req = JSON.parse(data.toString()) as TunnelRequest;
+            msg = JSON.parse(data.toString());
           } catch {
             log.warn('Bridge relay: received non-JSON message, ignoring');
             return;
           }
 
+          // Ignore relay control frames (heartbeat, peer events) — they aren't tunnel requests.
+          // Heartbeat: {type:"ping",ts:...}
+          // Peer events: {type:"peer_disconnected"|"peer_offline","role":...}
+          // Error: {type:"error","code":...}
+          const obj = msg as Record<string, unknown>;
+          if (typeof obj.type === 'string' && obj.path === undefined) {
+            log.debug(`Bridge relay: control frame type=${obj.type as string} (ignoring)`);
+            return;
+          }
+
+          // Tunnel request must have requestId + method + path
+          if (typeof obj.requestId !== 'string' || typeof obj.method !== 'string' || typeof obj.path !== 'string') {
+            log.warn(`Bridge relay: invalid tunnel frame (missing requestId/method/path), ignoring`);
+            return;
+          }
+
+          const req = obj as unknown as TunnelRequest;
           log.debug(
             `Bridge relay: tunnel request ${req.requestId} ${req.method} ${req.path}`,
           );

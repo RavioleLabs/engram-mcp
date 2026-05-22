@@ -11,6 +11,9 @@
  * The API key is stored in `extra_json` alongside the JWT so both are in one
  * table row. The refresh token is stored in the `refresh_token` column.
  */
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { getDb } from '../db/index.js';
 import { createLogger } from '../logger.js';
 
@@ -69,15 +72,48 @@ export function loadTokens(): EngramTokens | null {
       }
     | undefined;
 
-  if (!row) return null;
+  if (row) {
+    const extra = row.extra_json ? (JSON.parse(row.extra_json) as { apiKey?: string }) : {};
+    return {
+      jwt: row.access_token,
+      refreshToken: row.refresh_token ?? '',
+      apiKey: extra.apiKey ?? '',
+      expiresAt: row.expires_at ?? 0,
+    };
+  }
 
-  const extra = row.extra_json ? (JSON.parse(row.extra_json) as { apiKey?: string }) : {};
-  return {
-    jwt: row.access_token,
-    refreshToken: row.refresh_token ?? '',
-    apiKey: extra.apiKey ?? '',
-    expiresAt: row.expires_at ?? 0,
-  };
+  // Fallback: install.sh (and the legacy CLI pair script) write tokens to
+  // ~/.engram/config.json under `engramAccount`. The bridge client + transit
+  // poller load from oauth_tokens. If DB is empty but config has the tokens
+  // (fresh install), migrate them to the DB so cloud features start working.
+  try {
+    const configDir = process.env.ENGRAM_CONFIG_DIR
+      ? process.env.ENGRAM_CONFIG_DIR.startsWith('~')
+        ? path.join(os.homedir(), process.env.ENGRAM_CONFIG_DIR.slice(1))
+        : process.env.ENGRAM_CONFIG_DIR
+      : path.join(os.homedir(), '.engram');
+    const configPath = path.join(configDir, 'config.json');
+    if (!fs.existsSync(configPath)) return null;
+    const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as {
+      engramAccount?: { jwt?: string; refreshToken?: string; apiKey?: string };
+    };
+    const acc = raw.engramAccount;
+    if (!acc?.jwt || !acc.apiKey) return null;
+    let expiresAt = 0;
+    try { expiresAt = parseJwtExpiry(acc.jwt); } catch { /* leave 0 — caller will refresh */ }
+    const migrated: EngramTokens = {
+      jwt: acc.jwt,
+      refreshToken: acc.refreshToken ?? '',
+      apiKey: acc.apiKey,
+      expiresAt,
+    };
+    log.info('Migrating engramAccount from config.json → oauth_tokens table');
+    saveTokens(migrated);
+    return migrated;
+  } catch (e) {
+    log.warn(`Token migration from config.json failed: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
 }
 
 export function clearTokens(): void {
