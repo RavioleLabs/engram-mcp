@@ -7,6 +7,8 @@
 #   ENGRAM_DIR=~/.local/bin  override install directory
 #   ENGRAM_NO_SERVICE=1      skip service install
 #   ENGRAM_NO_MCP_JSON=1     skip mcp.json auto-config
+#   ENGRAM_NO_PAIR=1         skip cloud pairing
+#   ENGRAM_NO_BROWSER=1      don't open dashboard after install
 
 set -e
 
@@ -14,6 +16,44 @@ REPO="RavioleLabs/engram-mcp"
 INSTALL_DIR="${ENGRAM_DIR:-$HOME/.local/bin}"
 BINARY_NAME="engram-mcp"
 VERSION="${ENGRAM_VERSION:-latest}"
+NPM_PKG="@raviolelabs/engram-mcp"
+SRC_DIR="$HOME/.engram/src"
+
+START_TS=$(date +%s)
+TOTAL_STEPS=8
+CURRENT_STEP=0
+
+# ── UX helpers ──────────────────────────────────────────────────────────────
+
+BOLD=$(printf '\033[1m')
+DIM=$(printf '\033[2m')
+GREEN=$(printf '\033[32m')
+YELLOW=$(printf '\033[33m')
+RED=$(printf '\033[31m')
+CYAN=$(printf '\033[36m')
+RESET=$(printf '\033[0m')
+
+step() {
+  CURRENT_STEP=$((CURRENT_STEP + 1))
+  printf '\n%s▶ Step %d/%d:%s %s%s%s\n' "$CYAN" "$CURRENT_STEP" "$TOTAL_STEPS" "$RESET" "$BOLD" "$1" "$RESET"
+}
+
+ok() { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$1" ; }
+info() { printf '  %s→%s %s\n' "$DIM" "$RESET" "$1" ; }
+warn() { printf '  %s⚠%s %s\n' "$YELLOW" "$RESET" "$1" ; }
+err() { printf '  %s✗%s %s\n' "$RED" "$RESET" "$1" >&2 ; }
+
+elapsed_since() {
+  echo $(($(date +%s) - $1))
+}
+
+# ── Banner ──────────────────────────────────────────────────────────────────
+
+printf '\n'
+printf '%s═══════════════════════════════════════════════%s\n' "$DIM" "$RESET"
+printf '  %sEngramMCP installer%s\n' "$BOLD" "$RESET"
+printf '  %slocal-first semantic memory for AI agents%s\n' "$DIM" "$RESET"
+printf '%s═══════════════════════════════════════════════%s\n' "$DIM" "$RESET"
 
 # ── OS / arch detection ──────────────────────────────────────────────────────
 
@@ -23,95 +63,109 @@ ARCH="$(uname -m)"
 case "$OS" in
   Darwin)  PLATFORM="darwin" ;;
   Linux)   PLATFORM="linux" ;;
-  *)       echo "Unsupported OS: $OS" && exit 1 ;;
+  *)       err "Unsupported OS: $OS" ; exit 1 ;;
 esac
 
 case "$ARCH" in
   x86_64|amd64)  ARCHNAME="x64" ;;
   arm64|aarch64) ARCHNAME="arm64" ;;
-  *)             echo "Unsupported arch: $ARCH" && exit 1 ;;
+  *)             err "Unsupported arch: $ARCH" ; exit 1 ;;
 esac
 
 BINARY="${BINARY_NAME}-${PLATFORM}-${ARCHNAME}"
 
-SRC_DIR="$HOME/.engram/src"
-NPM_PKG="@raviolelabs/engram-mcp"
+# ── Step 1: Prerequisites ────────────────────────────────────────────────────
 
-# ── Check prerequisites (node + npm) ────────────────────────────────────────
+step "Checking prerequisites"
+STEP_TS=$(date +%s)
 
 require_cmd() {
-  command -v "$1" >/dev/null 2>&1 || {
-    printf '✗ Missing required command: %s\n' "$1" >&2
-    printf '  Please install %s before running the EngramMCP installer.\n' "$2" >&2
+  if command -v "$1" >/dev/null 2>&1; then
+    info "$1 found: $(command -v $1)"
+  else
+    err "Missing required command: $1"
+    printf '    Install: %s\n' "$2" >&2
     exit 1
-  }
+  fi
 }
 
 require_cmd node "Node.js 22+ (https://nodejs.org)"
-require_cmd npm "npm (bundled with Node.js)"
+require_cmd npm  "npm (bundled with Node.js)"
 
+NODE_VERSION=$(node -v)
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
 if [ "$NODE_MAJOR" -lt 22 ]; then
-  printf '✗ EngramMCP requires Node.js 22 or newer (you have %s)\n' "$(node -v)" >&2
-  printf '  Upgrade at https://nodejs.org or via nvm: `nvm install 22 && nvm use 22`\n' >&2
+  err "EngramMCP requires Node.js 22 or newer (you have $NODE_VERSION)"
+  info "Upgrade at https://nodejs.org or via nvm: nvm install 22 && nvm use 22"
   exit 1
 fi
 
-printf '\n'
-printf '  EngramMCP — local-first memory for AI agents\n'
-printf '  Platform: %s-%s · Node: %s\n' "$PLATFORM" "$ARCHNAME" "$(node -v)"
-printf '\n'
+info "Platform: ${PLATFORM}-${ARCHNAME}"
+info "Node:     ${NODE_VERSION}"
+info "npm:      $(npm -v)"
+ok "Prerequisites OK (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 
 mkdir -p "$INSTALL_DIR" "$HOME/.engram"
 
-# ── Install via npm (preferred) or fall back to git clone + build ────────────
+# ── Step 2: Install engram-mcp from npm ──────────────────────────────────────
+
+step "Installing engram-mcp via npm"
+STEP_TS=$(date +%s)
 
 if [ -n "${INSTALL_FROM_FILE:-}" ]; then
-  printf 'Using local binary copy %s...\n' "$INSTALL_FROM_FILE"
+  info "Using local binary copy: ${INSTALL_FROM_FILE}"
   cp "$INSTALL_FROM_FILE" "$INSTALL_DIR/$BINARY_NAME"
   chmod +x "$INSTALL_DIR/$BINARY_NAME"
+  ok "Local copy installed (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 else
-  # Primary path: install from npm registry (fast, no build needed)
   if npm view "$NPM_PKG" version >/dev/null 2>&1; then
-    printf 'Installing %s from npm...\n' "$NPM_PKG"
-    # Try global install; fall back to a user-local prefix if EACCES
-    if ! npm install -g "$NPM_PKG" 2>/dev/null; then
-      printf '  (global install required sudo — using a user-local prefix instead)\n'
+    PUBLISHED_VERSION=$(npm view "$NPM_PKG" version)
+    info "Package: ${NPM_PKG}@${PUBLISHED_VERSION}"
+    info "Running: npm install -g ${NPM_PKG}"
+    printf '\n'
+
+    if npm install -g "$NPM_PKG" 2>&1; then
+      ok "Installed globally (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
+    else
+      printf '\n'
+      warn "Global install failed (likely needs sudo) — using user-local prefix instead"
       mkdir -p "$HOME/.engram/npm"
-      npm install --prefix "$HOME/.engram/npm" "$NPM_PKG"
-      # Symlink the bins into INSTALL_DIR
+      info "Running: npm install --prefix ~/.engram/npm ${NPM_PKG}"
+      printf '\n'
+      npm install --prefix "$HOME/.engram/npm" "$NPM_PKG" 2>&1
       for bin in engram-mcp engram-mcp-pair engram-mcp-service engram-mcp-rebuild engram-mcp-install; do
         if [ -f "$HOME/.engram/npm/node_modules/.bin/$bin" ]; then
           ln -sf "$HOME/.engram/npm/node_modules/.bin/$bin" "$INSTALL_DIR/$bin"
+          info "Linked: ${INSTALL_DIR}/${bin}"
         fi
       done
+      ok "Installed to ~/.engram/npm (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
     fi
   else
     # Fallback: git clone + build (for when npm package isn't published yet)
+    warn "npm package not found in registry — falling back to git build"
     require_cmd git "git (https://git-scm.com/downloads)"
     if [ -d "$SRC_DIR/.git" ]; then
-      printf 'npm package not found — updating source at %s...\n' "$SRC_DIR"
+      info "Updating source at ${SRC_DIR}"
       git -C "$SRC_DIR" fetch --quiet origin
       git -C "$SRC_DIR" reset --quiet --hard origin/main
     else
-      printf 'npm package not found — cloning from GitHub...\n'
+      info "Cloning from GitHub..."
       rm -rf "$SRC_DIR"
-      git clone --quiet --depth 1 "https://github.com/${REPO}.git" "$SRC_DIR"
+      git clone --depth 1 "https://github.com/${REPO}.git" "$SRC_DIR"
     fi
-
-    printf 'Installing dependencies (this can take a minute)...\n'
-    (cd "$SRC_DIR" && npm install --silent --no-audit --no-fund)
-
-    printf 'Building...\n'
-    (cd "$SRC_DIR" && npm run build --silent)
-
-    printf 'Linking %s...\n' "$BINARY_NAME"
+    printf '\n'
+    info "Installing dependencies (this can take a minute)..."
+    (cd "$SRC_DIR" && npm install --no-audit --no-fund 2>&1)
+    printf '\n'
+    info "Building..."
+    (cd "$SRC_DIR" && npm run build 2>&1)
+    info "Creating launcher: ${INSTALL_DIR}/${BINARY_NAME}"
     cat > "$INSTALL_DIR/$BINARY_NAME" <<EOF
 #!/usr/bin/env sh
 exec node "$SRC_DIR/dist/scripts/serve.js" "\$@"
 EOF
     chmod +x "$INSTALL_DIR/$BINARY_NAME"
-
     if [ -f "$SRC_DIR/dist/scripts/pair.js" ]; then
       cat > "$INSTALL_DIR/${BINARY_NAME}-pair" <<EOF
 #!/usr/bin/env sh
@@ -119,14 +173,21 @@ exec node "$SRC_DIR/dist/scripts/pair.js" "\$@"
 EOF
       chmod +x "$INSTALL_DIR/${BINARY_NAME}-pair"
     fi
+    ok "Built from source (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
   fi
 fi
 
-# ── PATH setup ───────────────────────────────────────────────────────────────
+# ── Step 3: PATH setup ───────────────────────────────────────────────────────
+
+step "Setting up PATH"
+STEP_TS=$(date +%s)
 
 add_to_path() {
   case ":$PATH:" in
-    *":$INSTALL_DIR:"*) return 0 ;;
+    *":$INSTALL_DIR:"*)
+      info "${INSTALL_DIR} already in PATH"
+      return 0
+      ;;
   esac
 
   PROFILE=""
@@ -137,69 +198,114 @@ add_to_path() {
 
   if [ -n "$PROFILE" ] && ! grep -q "local/bin" "$PROFILE" 2>/dev/null; then
     printf '\n# Added by EngramMCP installer\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE"
-    printf 'Added ~/.local/bin to PATH in %s\n' "$PROFILE"
+    info "Added ${INSTALL_DIR} to PATH in ${PROFILE}"
+    info "Restart your shell or run: source ${PROFILE}"
   fi
 
   export PATH="$INSTALL_DIR:$PATH"
 }
 
 add_to_path
+ok "PATH configured (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 
-# ── Ollama ───────────────────────────────────────────────────────────────────
+# ── Step 4: Ollama ───────────────────────────────────────────────────────────
 
-check_ollama() {
+step "Installing Ollama (local embeddings)"
+STEP_TS=$(date +%s)
+
+install_ollama() {
   if command -v ollama >/dev/null 2>&1; then
-    printf 'Ollama already installed: %s\n' "$(ollama --version 2>&1 | head -1)"
+    info "Ollama already installed: $(ollama --version 2>&1 | head -1)"
     return 0
   fi
 
-  printf '\n'
-  printf 'Ollama is required for local embeddings (free, private, runs on your machine).\n'
+  info "Ollama not found — needed for free local 768-d embeddings"
 
-  # Non-interactive (piped install): skip prompt, just notify
   if [ ! -t 0 ]; then
-    printf 'Run "engram-mcp install:wizard" after install to set up Ollama.\n'
-    return 1
+    info "Non-interactive mode — auto-installing Ollama"
+  else
+    printf '  Install Ollama now? [Y/n] '
+    read -r REPLY
+    REPLY="${REPLY:-Y}"
+    case "$REPLY" in
+      [Yy]*) ;;
+      *)
+        warn "Skipped — engram-mcp will fail to embed until Ollama is installed"
+        info "Install later: https://ollama.com/download"
+        return 1
+        ;;
+    esac
   fi
 
-  printf 'Install Ollama now? [Y/n] '
-  read -r REPLY
-  REPLY="${REPLY:-Y}"
-  case "$REPLY" in
-    [Yy]*) ;;
-    *)
-      printf 'Skipping Ollama install. Run "engram-mcp install:wizard" later to configure.\n'
-      return 1
-      ;;
-  esac
-
+  printf '\n'
   if [ "$PLATFORM" = "darwin" ] && command -v brew >/dev/null 2>&1; then
-    brew install ollama
+    info "Running: brew install ollama"
+    brew install ollama 2>&1
   elif [ "$PLATFORM" = "linux" ]; then
+    info "Running: curl -fsSL https://ollama.com/install.sh | sh"
     curl -fsSL https://ollama.com/install.sh | sh
   else
-    printf 'Cannot auto-install Ollama. Download from https://ollama.com/download\n'
+    err "Cannot auto-install Ollama — download from https://ollama.com/download"
     return 1
   fi
 }
 
 OLLAMA_OK=true
-check_ollama || OLLAMA_OK=false
+install_ollama || OLLAMA_OK=false
+[ "$OLLAMA_OK" = "true" ] && ok "Ollama ready (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 
-# ── Install wizard ───────────────────────────────────────────────────────────
+# ── Step 5: Pull embeddings model ────────────────────────────────────────────
 
-if [ -t 0 ]; then
-  printf '\nRunning install wizard...\n'
-  "$INSTALL_DIR/$BINARY_NAME" install:wizard || true
+step "Pulling embeddings model (nomic-embed-text, ~274 MB)"
+STEP_TS=$(date +%s)
+
+if [ "$OLLAMA_OK" = "true" ]; then
+  # Start Ollama server in background if not already running
+  if ! pgrep -f 'ollama serve\|/Applications/Ollama' >/dev/null 2>&1; then
+    info "Starting Ollama server in background..."
+    if [ "$PLATFORM" = "darwin" ] && [ -d "/Applications/Ollama.app" ]; then
+      open -a Ollama 2>&1 || true
+    else
+      (ollama serve >/dev/null 2>&1 &)
+    fi
+    sleep 3
+  fi
+
+  if ollama list 2>&1 | grep -q '^nomic-embed-text'; then
+    info "Model nomic-embed-text already pulled"
+  else
+    info "Running: ollama pull nomic-embed-text"
+    printf '\n'
+    ollama pull nomic-embed-text 2>&1
+  fi
+  ok "Embeddings model ready (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 else
-  printf '\nNon-interactive mode. Run "engram-mcp install:wizard" to complete setup.\n'
+  warn "Skipped (Ollama not available)"
 fi
 
-# ── Background service ───────────────────────────────────────────────────────
+# ── Step 6: Install wizard ───────────────────────────────────────────────────
+
+step "Running setup wizard"
+STEP_TS=$(date +%s)
+
+if [ -t 0 ]; then
+  info "Running: ${BINARY_NAME} install:wizard"
+  printf '\n'
+  "$INSTALL_DIR/$BINARY_NAME" install:wizard || true
+  ok "Wizard finished (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
+else
+  info "Non-interactive mode — skipping wizard"
+  info "Run later: ${BINARY_NAME} install:wizard"
+fi
+
+# ── Step 7: Background service + MCP wiring + skill plugin ──────────────────
+
+step "Registering background service + agent config"
+STEP_TS=$(date +%s)
 
 install_service() {
   if [ "${ENGRAM_NO_SERVICE:-}" = "1" ]; then
-    printf 'Skipping service install (ENGRAM_NO_SERVICE=1).\n'
+    warn "Skipped (ENGRAM_NO_SERVICE=1)"
     return 0
   fi
 
@@ -241,7 +347,8 @@ PLIST
 
     launchctl unload "$PLIST_FILE" 2>/dev/null || true
     launchctl load -w "$PLIST_FILE"
-    printf 'LaunchAgent installed and started: %s\n' "$PLIST_FILE"
+    info "LaunchAgent: ${PLIST_FILE}"
+    info "Loaded and running (auto-starts on login)"
 
   elif [ "$PLATFORM" = "linux" ]; then
     SYSTEMD_DIR="$HOME/.config/systemd/user"
@@ -267,46 +374,32 @@ SERVICE
 
     systemctl --user daemon-reload
     systemctl --user enable --now engram.service
-    printf 'systemd user service installed and started.\n'
+    info "systemd user service installed and started"
   fi
 }
 
 install_service
 
-# ── mcp.json auto-config ─────────────────────────────────────────────────────
-
+# MCP wiring
 add_to_mcp_json() {
   if [ "${ENGRAM_NO_MCP_JSON:-}" = "1" ]; then
     return 0
   fi
 
   BINARY_PATH="$INSTALL_DIR/$BINARY_NAME"
-  MCP_ENTRY="{\"command\":\"${BINARY_PATH}\",\"args\":[]}"
 
   for MCP_FILE in "$HOME/.claude/mcp.json" "$HOME/.cursor/mcp.json"; do
-    if [ ! -d "$(dirname "$MCP_FILE")" ]; then
+    MCP_DIR=$(dirname "$MCP_FILE")
+    if [ ! -d "$MCP_DIR" ]; then
+      info "$(basename "$MCP_DIR")/ not found — skipping ${MCP_FILE}"
       continue
     fi
 
-    # Ask for confirmation in interactive mode
-    if [ -t 0 ]; then
-      printf '\nAdd engram-mcp to %s? [Y/n] ' "$MCP_FILE"
-      read -r REPLY
-      REPLY="${REPLY:-Y}"
-      case "$REPLY" in
-        [Yy]*) ;;
-        *) continue ;;
-      esac
-    fi
-
-    # Create or update the file
     if [ ! -f "$MCP_FILE" ]; then
-      printf '{"mcpServers":{"engram":%s}}\n' "$MCP_ENTRY" > "$MCP_FILE"
-      printf 'Created %s\n' "$MCP_FILE"
-    else
-      # Use node if available to safely merge JSON, else just print instructions
-      if command -v node >/dev/null 2>&1; then
-        node - "$MCP_FILE" "$BINARY_PATH" <<'NODESCRIPT'
+      printf '{"mcpServers":{"engram":{"command":"%s","args":[]}}}\n' "$BINARY_PATH" > "$MCP_FILE"
+      info "Created ${MCP_FILE}"
+    elif command -v node >/dev/null 2>&1; then
+      node - "$MCP_FILE" "$BINARY_PATH" <<'NODESCRIPT'
 const fs = require('fs');
 const [,, file, bin] = process.argv;
 let cfg = {};
@@ -314,27 +407,22 @@ try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
 cfg.mcpServers = cfg.mcpServers || {};
 cfg.mcpServers.engram = { command: bin, args: [] };
 fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
-console.log('Updated ' + file);
 NODESCRIPT
-      else
-        printf 'Could not auto-update %s (node not found). Add manually:\n' "$MCP_FILE"
-        printf '  "engram": { "command": "%s", "args": [] }\n' "$BINARY_PATH"
-      fi
+      info "Updated ${MCP_FILE}"
+    else
+      warn "Could not update ${MCP_FILE} (node missing) — add manually:"
+      printf '    "engram": { "command": "%s", "args": [] }\n' "$BINARY_PATH"
     fi
   done
 }
 
 add_to_mcp_json
 
-# ── Install engram-skill plugin for Claude Code ──────────────────────────────
-
 install_engram_skill() {
   if [ ! -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
-    printf 'ℹ Claude Code not detected — skipping engram-skill install (not needed for Cursor / Continue / other MCP clients; they get instructions via MCP spec).\n'
+    info "Claude Code not detected — skipping engram-skill plugin"
     return 0
   fi
-
-  printf '📦 Installing engram-skill plugin for Claude Code...\n'
 
   SKILL_VERSION="0.2.0"
   SKILL_DIR="$HOME/.claude/plugins/cache/local/engram-skill/$SKILL_VERSION"
@@ -342,6 +430,7 @@ install_engram_skill() {
 
   if command -v git >/dev/null 2>&1; then
     rm -rf "$SKILL_DIR"
+    info "Cloning engram-skill v${SKILL_VERSION}..."
     git clone -q --depth 1 --branch "v$SKILL_VERSION" https://github.com/RavioleLabs/engram-skill "$SKILL_DIR" 2>/dev/null \
       || git clone -q --depth 1 https://github.com/RavioleLabs/engram-skill "$SKILL_DIR"
   fi
@@ -363,35 +452,40 @@ data["plugins"]["engram-skill@local"] = [{
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
 PY
-    printf '✓ engram-skill plugin installed at %s\n' "$SKILL_DIR"
+    info "engram-skill plugin installed for Claude Code"
   else
-    printf '⚠ Could not install engram-skill plugin (network or git issue). engram-mcp still works; the agent will be slightly less optimal at picking it over filesystem grep.\n'
+    warn "engram-skill clone failed (network or git issue)"
   fi
 }
 
 install_engram_skill
+ok "Service + agent wiring done (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 
-# ── Pair with cloud account ──────────────────────────────────────────────────
+# ── Step 8: Pair with cloud account ──────────────────────────────────────────
+
+step "Pairing with cloud account"
+STEP_TS=$(date +%s)
 
 pair_account() {
   if [ "${ENGRAM_NO_PAIR:-}" = "1" ]; then
+    info "Skipped (ENGRAM_NO_PAIR=1)"
     return 0
   fi
 
-  # Zero-friction path: invite token baked in by /install/[token] Pages function
   if [ -n "${INVITE_TOKEN:-}" ]; then
-    printf '\n'
-    printf '  Redeeming invite token...\n'
+    info "Invite token detected: ${INVITE_TOKEN}"
+    info "Calling https://api.engram-mcp.com/api/pair/redeem-invite"
     REDEEM_RESPONSE=$(curl -sf -X POST https://api.engram-mcp.com/api/pair/redeem-invite \
       -H "Content-Type: application/json" \
       -d "{\"invite_token\":\"$INVITE_TOKEN\"}" 2>&1)
     REDEEM_EXIT=$?
     if [ $REDEEM_EXIT -ne 0 ] || [ -z "$REDEEM_RESPONSE" ]; then
-      printf '  Warning: invite redemption failed (expired or already used).\n'
-      printf '  You can still use engram-mcp in local-only mode.\n'
-      printf '  To pair later: run '\''engram-mcp pair'\''\n'
-    else
-      python3 - <<PY
+      warn "Redemption failed — token expired or already used"
+      info "engram-mcp still works locally (no cloud sync)"
+      info "Pair later: engram-mcp pair"
+      return 0
+    fi
+    python3 - <<PY
 import json, sys, os, datetime
 raw = r"""$REDEEM_RESPONSE"""
 try:
@@ -420,11 +514,12 @@ with open(config_path, "w") as f:
     json.dump(existing, f, indent=2)
 os.chmod(config_path, 0o600)
 email = data.get("user", {}).get("email", "your account")
-print(f"  Paired to {email}")
+print(f"  Linked to {email}")
 PY
-      # Auto-open dashboard with session JWT for instant login
-      if [ "${ENGRAM_NO_BROWSER:-}" != "1" ]; then
-        DASHBOARD_URL="https://engram-mcp.com/welcome?session=$(python3 -c "
+    info "Tokens saved to ~/.engram/config.json (chmod 600)"
+
+    if [ "${ENGRAM_NO_BROWSER:-}" != "1" ]; then
+      DASHBOARD_URL="https://engram-mcp.com/welcome?session=$(python3 -c "
 import json, urllib.parse, os
 try:
     with open(os.path.expanduser('~/.engram/config.json')) as f:
@@ -434,44 +529,48 @@ try:
 except Exception:
     print('')
 ")"
-        if [ -n "$DASHBOARD_URL" ] && [ "$DASHBOARD_URL" != "https://engram-mcp.com/welcome?session=" ]; then
-          printf '\n'
-          printf '  \360\237\214\220 Opening dashboard in your browser...\n'
-          if command -v open >/dev/null 2>&1; then
-            open "$DASHBOARD_URL"
-          elif command -v xdg-open >/dev/null 2>&1; then
-            xdg-open "$DASHBOARD_URL" &
-          elif command -v start >/dev/null 2>&1; then
-            start "$DASHBOARD_URL"
-          else
-            printf '  (could not detect browser opener \342\200\224 visit %s manually)\n' "$DASHBOARD_URL"
-          fi
+      if [ -n "$DASHBOARD_URL" ] && [ "$DASHBOARD_URL" != "https://engram-mcp.com/welcome?session=" ]; then
+        info "Opening dashboard: https://engram-mcp.com/welcome?session=…"
+        if command -v open >/dev/null 2>&1; then
+          open "$DASHBOARD_URL"
+        elif command -v xdg-open >/dev/null 2>&1; then
+          xdg-open "$DASHBOARD_URL" &
+        elif command -v start >/dev/null 2>&1; then
+          start "$DASHBOARD_URL"
         fi
       fi
-      printf '  EngramMCP is now linked. Open https://engram-mcp.com/dashboard to view your memory.\n'
     fi
+    ok "Paired with cloud (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
     return 0
   fi
 
-  # Legacy path: no invite token → skip (user can pair later)
-  printf '\n'
-  printf '  No invite token found — skipping pairing.\n'
-  printf '  Run '\''engram-mcp pair'\'' later to enable cloud features.\n'
+  info "No INVITE_TOKEN — installing local-only (MIT, no cloud)"
+  info "Pair later: engram-mcp pair"
+  ok "Local-only mode (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 }
 
 pair_account
 
 # ── Done ─────────────────────────────────────────────────────────────────────
 
+TOTAL_TIME=$(elapsed_since $START_TS)
+
 printf '\n'
-printf '  EngramMCP %s installed successfully!\n' "$VERSION"
+printf '%s═══════════════════════════════════════════════%s\n' "$DIM" "$RESET"
+printf '  %s✓ EngramMCP installed in %ss%s\n' "$GREEN" "$TOTAL_TIME" "$RESET"
+printf '%s═══════════════════════════════════════════════%s\n' "$DIM" "$RESET"
 printf '\n'
-printf '  Binary:   %s\n' "$INSTALL_DIR/$BINARY_NAME"
+printf '  %sBinary:%s    %s\n' "$BOLD" "$RESET" "$INSTALL_DIR/$BINARY_NAME"
+printf '  %sData dir:%s  ~/.engram\n' "$BOLD" "$RESET"
+printf '  %sLogs:%s      ~/.engram/logs/engram.log\n' "$BOLD" "$RESET"
 if [ "$OLLAMA_OK" = "false" ]; then
-  printf '\n  WARN: Ollama not installed — run "engram-mcp install:wizard" to finish setup.\n'
+  printf '\n  %sWARN:%s Ollama not installed — run engram-mcp install:wizard to finish setup\n' "$YELLOW" "$RESET"
 fi
 printf '\n'
-printf '  Start manually:  engram-mcp\n'
-printf '  Open dashboard:  https://engram-mcp.com/dashboard\n'
-printf '  Docs:            https://engram-mcp.com/docs\n'
+printf '  %sTry it now%s — in your AI agent ask:\n' "$BOLD" "$RESET"
+printf '    %s"remember that I prefer dark mode"%s\n' "$DIM" "$RESET"
+printf '    %s"what do I prefer?"%s\n' "$DIM" "$RESET"
+printf '\n'
+printf '  %sDashboard:%s  https://engram-mcp.com/dashboard\n' "$BOLD" "$RESET"
+printf '  %sDocs:%s       https://engram-mcp.com/docs\n' "$BOLD" "$RESET"
 printf '\n'
