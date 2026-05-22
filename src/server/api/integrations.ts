@@ -20,7 +20,6 @@ import { z } from 'zod';
 import { createLogger } from '../../logger.js';
 import { isDriveConnected, startDriveOAuthFlow } from '../../memory/modules/drive/oauth.js';
 import { isNotionConnected, startNotionOAuthFlow } from '../../memory/modules/notion/oauth.js';
-import { EngramConfigSchema } from '../../config/schema.js';
 import type { EngramConfig } from '../../config/schema.js';
 
 const log = createLogger('api:integrations');

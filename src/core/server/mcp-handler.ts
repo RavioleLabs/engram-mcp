@@ -71,7 +71,7 @@ export interface BuildEngramRuntimeOptions {
   adminMode?: boolean;
 }
 
-export async function buildEngramRuntime(config: EngramConfig, opts: BuildEngramRuntimeOptions = {}): Promise<EngramRuntime> {
+export async function buildEngramRuntime(config: EngramConfig, _opts: BuildEngramRuntimeOptions = {}): Promise<EngramRuntime> {
   initDb(config.dataDir);
   initVectorStore(config.dataDir);
 

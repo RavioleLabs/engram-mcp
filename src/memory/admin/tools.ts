@@ -12,7 +12,7 @@ import type { MemoryStore } from '../core/store.js';
 import type { EngramConfig } from '../../config/schema.js';
 import { ToolRouter } from '../../mcp-server/tool-router.js';
 
-const log = createLogger('admin-tools');
+const _log = createLogger('admin-tools');
 
 export function buildAdminTools(
   store: MemoryStore,

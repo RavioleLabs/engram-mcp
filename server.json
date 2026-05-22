@@ -8,12 +8,12 @@
     "source": "github"
   },
   "homepage": "https://engram-mcp.com",
-  "version": "0.2.4",
+  "version": "0.4.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@raviolelabs/engram-mcp",
-      "version": "0.2.4",
+      "version": "0.4.2",
       "transport": {
         "type": "stdio"
       },
