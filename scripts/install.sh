@@ -216,8 +216,13 @@ ok "PATH configured (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 
 # ── Step 4: Ollama ───────────────────────────────────────────────────────────
 
-step "Installing Ollama (local embeddings)"
+step "Installing Ollama (local embeddings — Free tier only)"
 STEP_TS=$(date +%s)
+info "Why Ollama: local AI runtime that runs the embedding model on your machine."
+info "  - Engram pulls 'nomic-embed-text' (~274 MB) to convert text → 768-d vectors"
+info "  - Vectors enable semantic recall ('find memories about X' instead of keyword search)"
+info "  - 100% local + free + private — your text never leaves your PC"
+info "  - Pro users can disable Ollama in the dashboard and use hosted embeddings instead"
 
 install_ollama() {
   if command -v ollama >/dev/null 2>&1; then
@@ -225,7 +230,7 @@ install_ollama() {
     return 0
   fi
 
-  info "Ollama not found — needed for free local 768-d embeddings"
+  info "Ollama not found — installing now"
 
   if [ ! -t 0 ]; then
     info "Non-interactive mode — auto-installing Ollama"
@@ -565,7 +570,7 @@ existing["engramAccount"] = {
     "refreshToken": data.get("refresh_token", "") if isinstance(data.get("refresh_token", ""), str) else "",
     "apiKey": api_key,
     "masterKeySalt": existing.get("engramAccount", {}).get("masterKeySalt", ""),
-    "pairedAt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "pairedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
 with open(config_path, "w") as f:
     json.dump(existing, f, indent=2)

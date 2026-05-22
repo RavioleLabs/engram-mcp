@@ -5,7 +5,10 @@ export const EmbeddingsConfigSchema = z.object({
     .enum(['ollama', 'engram', 'engram-hosted', 'voyage', 'openai', 'openai-compatible'])
     .default('ollama'),
   baseUrl: z.string().url().optional(),
-  model: z.string(),
+  // Default to nomic-embed-text — the model the installer pulls via Ollama.
+  // Without a default, configs missing this field fail Zod parse → engram-mcp
+  // crashes immediately (exit 78) on startup.
+  model: z.string().default('nomic-embed-text'),
   apiKey: z.string().optional(),
   dimensions: z.number().int().positive().default(768),
 });
@@ -131,7 +134,15 @@ export type SyncConfig = z.infer<typeof SyncConfigSchema>;
 
 export const EngramConfigSchema = z.object({
   dataDir: z.string().default('~/.engram'),
-  embeddings: EmbeddingsConfigSchema,
+  // Default to local Ollama with nomic-embed-text (what install.sh sets up).
+  // Without a default here, a config that only contains engramAccount fails
+  // Zod parse → engram-mcp crashes (exit 78) immediately on launch.
+  embeddings: EmbeddingsConfigSchema.default({
+    provider: 'ollama',
+    baseUrl: 'http://localhost:11434',
+    model: 'nomic-embed-text',
+    dimensions: 768,
+  }),
   drive: DriveOAuthSchema,
   notion: NotionOAuthSchema,
   propertyExtraction: PropertyExtractionConfigSchema.default({

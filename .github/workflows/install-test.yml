@@ -1,0 +1,217 @@
+name: Install Test (E2E)
+
+# End-to-end install test: spins up Ubuntu, runs the public install.sh,
+# verifies engram-mcp boots, MCP tools list, and basic remember/recall.
+# Runs on PR + staging push so we catch install regressions BEFORE main.
+#
+# Why this exists: the install flow has 8 steps spanning npm, Ollama, LaunchAgent,
+# MCP config, pair flow. Each step has caught a regression in the past
+# (heredoc stdin conflict, missing config defaults, Python json parse, etc.).
+# Unit tests don't cover the full glue.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [staging]
+  workflow_dispatch: {}
+
+jobs:
+  install-test:
+    name: Install + boot + MCP tool smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Ollama (Linux native installer)
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          # Start in background, wait for readiness
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:11434/api/tags > /dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          ollama pull nomic-embed-text
+
+      - name: Build engram-mcp from current branch
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install via npm (latest published — sanity check)
+        if: github.event_name == 'workflow_dispatch'
+        run: npm install -g @raviolelabs/engram-mcp@latest
+
+      - name: Install via current branch (link)
+        if: github.event_name != 'workflow_dispatch'
+        run: npm link
+
+      - name: Verify binary
+        run: |
+          which engram-mcp
+          engram-mcp --help || true
+
+      - name: Boot test 1 — empty config (must work)
+        env:
+          DATA_DIR: /tmp/engram-test-empty
+        run: |
+          mkdir -p /tmp/engram-test-empty ~/.engram-config-empty
+          echo '{}' > ~/.engram-config-empty/config.json
+          ENGRAM_CONFIG_DIR=~/.engram-config-empty engram-mcp --no-http > /tmp/boot-empty.log 2>&1 &
+          PID=$!
+          sleep 6
+          if ! kill -0 $PID 2>/dev/null; then
+            echo "::error::engram-mcp died with empty config — schema defaults broken"
+            cat /tmp/boot-empty.log
+            exit 1
+          fi
+          kill $PID 2>/dev/null
+          echo "✓ boots with {} config"
+
+      - name: Boot test 2 — pair-only config (the v0.4.3 regression case)
+        # This is the exact pattern install.sh writes after a successful pair:
+        # only engramAccount, no embeddings/dataDir/etc. Used to crash with exit 78.
+        env:
+          DATA_DIR: /tmp/engram-test-pair
+        run: |
+          mkdir -p /tmp/engram-test-pair ~/.engram-config-pair
+          cat > ~/.engram-config-pair/config.json <<'JSON'
+          {
+            "engramAccount": {
+              "jwt": "test-jwt",
+              "refreshToken": "test-refresh",
+              "apiKey": "test-api-key",
+              "masterKeySalt": "",
+              "pairedAt": "2026-01-01T00:00:00Z"
+            }
+          }
+          JSON
+          ENGRAM_CONFIG_DIR=~/.engram-config-pair engram-mcp --no-http > /tmp/boot-pair.log 2>&1 &
+          PID=$!
+          sleep 8
+          if ! kill -0 $PID 2>/dev/null; then
+            echo "::error::engram-mcp died with pair-only config — this is the v0.4.3 regression"
+            cat /tmp/boot-pair.log
+            exit 1
+          fi
+          echo "ENGRAM_PID=$PID" >> $GITHUB_ENV
+          echo "✓ boots with pair-only config (v0.4.3 regression fixed)"
+
+      - name: Boot engram-mcp in background (for tools test)
+        env:
+          DATA_DIR: /tmp/engram-test
+          ENGRAM_NO_PAIR: '1'
+        run: |
+          mkdir -p /tmp/engram-test
+          mkdir -p ~/.engram
+          echo '{}' > ~/.engram/config.json
+          engram-mcp --no-http > /tmp/engram-boot.log 2>&1 &
+          ENGRAM_PID=$!
+          echo "ENGRAM_PID=$ENGRAM_PID" >> $GITHUB_ENV
+          sleep 8
+          if ! kill -0 $ENGRAM_PID 2>/dev/null; then
+            echo "::error::engram-mcp died during boot — see logs"
+            cat /tmp/engram-boot.log
+            exit 1
+          fi
+          echo "✓ engram-mcp running (PID $ENGRAM_PID)"
+
+      - name: MCP stdio smoke test — list_tools + remember + recall
+        run: |
+          # Spawn engram-mcp via stdio, send JSON-RPC initialize + list_tools + remember + recall
+          cat > /tmp/mcp-test.mjs <<'EOF'
+          import { spawn } from 'child_process';
+          import { setTimeout as wait } from 'timers/promises';
+
+          const proc = spawn('engram-mcp', ['--no-http'], {
+            env: { ...process.env, DATA_DIR: '/tmp/engram-test-mcp' },
+            stdio: ['pipe', 'pipe', 'inherit'],
+          });
+          let buf = '';
+          const responses = [];
+          proc.stdout.on('data', (d) => {
+            buf += d.toString();
+            const lines = buf.split('\n');
+            buf = lines.pop() ?? '';
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try { responses.push(JSON.parse(line)); } catch {}
+            }
+          });
+          const send = (msg) => proc.stdin.write(JSON.stringify(msg) + '\n');
+          const wait_for = async (id, ms = 15000) => {
+            const start = Date.now();
+            while (Date.now() - start < ms) {
+              const r = responses.find(x => x.id === id);
+              if (r) return r;
+              await wait(100);
+            }
+            throw new Error(`Timeout waiting for response id=${id}`);
+          };
+
+          send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'ci', version: '1' } } });
+          const init = await wait_for(1);
+          console.log('✓ initialize:', init.result?.serverInfo?.name);
+
+          send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+          const tools = await wait_for(2);
+          const toolNames = tools.result?.tools?.map(t => t.name) ?? [];
+          console.log('✓ tools/list:', toolNames.length, 'tools');
+          if (!toolNames.includes('remember') || !toolNames.includes('recall')) {
+            throw new Error('Missing core tools: remember/recall');
+          }
+
+          send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'remember', arguments: { content: 'CI smoke test memory', title: 'ci test', tags: ['ci'] } } });
+          const remembered = await wait_for(3, 30000);
+          const remResult = JSON.parse(remembered.result.content[0].text);
+          if (!remResult.id) throw new Error('remember did not return id: ' + JSON.stringify(remResult));
+          console.log('✓ remember:', remResult.id);
+
+          send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'recall', arguments: { query: 'ci smoke test', limit: 5 } } });
+          const recalled = await wait_for(4, 30000);
+          const recResult = JSON.parse(recalled.result.content[0].text);
+          if (!Array.isArray(recResult.results) || recResult.results.length === 0) {
+            throw new Error('recall returned no results: ' + JSON.stringify(recResult));
+          }
+          console.log('✓ recall:', recResult.results.length, 'hits');
+
+          proc.kill();
+          process.exit(0);
+          EOF
+          mkdir -p /tmp/engram-test-mcp
+          node /tmp/mcp-test.mjs
+
+      - name: Kill engram-mcp
+        if: always()
+        run: |
+          [ -n "$ENGRAM_PID" ] && kill $ENGRAM_PID 2>/dev/null || true
+          pkill -f 'engram-mcp' 2>/dev/null || true
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== engram-boot.log ==="
+          cat /tmp/engram-boot.log 2>/dev/null | tail -50 || true
+          echo "=== ollama.log ==="
+          tail -30 /tmp/ollama.log 2>/dev/null || true
+
+  install-script-syntax:
+    name: install.sh + install.ps1 syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n install.sh
+        run: bash -n scripts/install.sh
+      - name: shellcheck install.sh
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: scripts
+          severity: error

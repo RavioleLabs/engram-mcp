@@ -15,6 +15,7 @@ import { reindexApi } from '../../server/api/reindex.js';
 import { syncStatusRouter } from '../../server/api/sync-status.js';
 import { graphApi } from '../../server/api/graph.js';
 import { integrationsApi } from '../../server/api/integrations.js';
+import { versionApi } from '../../server/api/version.js';
 import { loadConfig } from '../../config/index.js';
 import { buildTeamRouter } from '../../webapp/api/team.js';
 import type { MemoryStore } from '../../memory/core/store.js';
@@ -77,6 +78,7 @@ export function startWebapp(options: WebappOptions): { app: Express; server: htt
   app.use('/api/reindex', reindexApi());
   app.use('/api/graph', graphApi(options.store));
   app.use('/api/integrations', integrationsApi(() => loadConfig()));
+  app.use('/api/version', versionApi());
   app.use(syncStatusRouter());
 
   // Workspace local API (key wrapping for browser invite flow)
