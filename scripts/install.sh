@@ -120,19 +120,25 @@ if [ -n "${INSTALL_FROM_FILE:-}" ]; then
 else
   if npm view "$NPM_PKG" version >/dev/null 2>&1; then
     PUBLISHED_VERSION=$(npm view "$NPM_PKG" version)
-    info "Package: ${NPM_PKG}@${PUBLISHED_VERSION}"
-    info "Running: npm install -g ${NPM_PKG}"
+    UNPACKED_KB=$(npm view "$NPM_PKG" dist.unpackedSize 2>/dev/null | awk '{printf "%d", $1/1024}')
+    info "Package: ${NPM_PKG}@${PUBLISHED_VERSION} (${UNPACKED_KB} KB tarball, ~150 MB on disk with deps)"
+    info "Running: npm install -g ${NPM_PKG} --no-audit --no-fund"
+    info "(this can take 30-90s — native binaries for SQLite/LanceDB/Whisper)"
     printf '\n'
 
-    if npm install -g "$NPM_PKG" 2>&1; then
+    # Filter out deprecation noise from transitive deps (uuid, prebuild-install, etc.)
+    # Keep errors, real warnings, progress.
+    NPM_FILTER='grep -v "npm warn deprecated"'
+
+    if npm install -g "$NPM_PKG" --no-audit --no-fund --loglevel=warn 2>&1 | eval "$NPM_FILTER"; then
       ok "Installed globally (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
     else
       printf '\n'
       warn "Global install failed (likely needs sudo) — using user-local prefix instead"
       mkdir -p "$HOME/.engram/npm"
-      info "Running: npm install --prefix ~/.engram/npm ${NPM_PKG}"
+      info "Running: npm install --prefix ~/.engram/npm ${NPM_PKG} --no-audit --no-fund"
       printf '\n'
-      npm install --prefix "$HOME/.engram/npm" "$NPM_PKG" 2>&1
+      npm install --prefix "$HOME/.engram/npm" "$NPM_PKG" --no-audit --no-fund --loglevel=warn 2>&1 | eval "$NPM_FILTER"
       for bin in engram-mcp engram-mcp-pair engram-mcp-service engram-mcp-rebuild engram-mcp-install; do
         if [ -f "$HOME/.engram/npm/node_modules/.bin/$bin" ]; then
           ln -sf "$HOME/.engram/npm/node_modules/.bin/$bin" "$INSTALL_DIR/$bin"
@@ -238,9 +244,40 @@ install_ollama() {
   fi
 
   printf '\n'
-  if [ "$PLATFORM" = "darwin" ] && command -v brew >/dev/null 2>&1; then
-    info "Running: brew install ollama"
-    brew install ollama 2>&1
+  if [ "$PLATFORM" = "darwin" ]; then
+    if command -v brew >/dev/null 2>&1; then
+      info "Running: brew install ollama (this can take 1-3 min the first time)"
+      brew install ollama 2>&1
+    else
+      info "Homebrew not detected — downloading Ollama.app directly from ollama.com"
+      info "URL: https://ollama.com/download/Ollama-darwin.zip (~250 MB)"
+      TMPZIP=$(mktemp -t ollama-XXXXXX).zip
+      if curl -fL --progress-bar https://ollama.com/download/Ollama-darwin.zip -o "$TMPZIP" 2>&1; then
+        info "Extracting to /Applications/Ollama.app"
+        if unzip -q -o "$TMPZIP" -d /Applications/ 2>&1; then
+          # Remove Gatekeeper quarantine so it runs without prompts
+          xattr -d com.apple.quarantine /Applications/Ollama.app 2>/dev/null || true
+          rm -f "$TMPZIP"
+          info "Launching Ollama.app (creates /usr/local/bin/ollama symlink)"
+          open -a Ollama 2>&1 || true
+          sleep 5
+          # Refresh PATH lookup
+          hash -r 2>/dev/null || true
+          if ! command -v ollama >/dev/null 2>&1; then
+            warn "Ollama installed but binary not in PATH yet"
+            info "May need: sudo ln -sf /Applications/Ollama.app/Contents/Resources/ollama /usr/local/bin/ollama"
+          fi
+        else
+          err "Failed to extract Ollama.zip"
+          rm -f "$TMPZIP"
+          return 1
+        fi
+      else
+        err "Failed to download Ollama from https://ollama.com/download/Ollama-darwin.zip"
+        info "Manual install: download from https://ollama.com/download and try again"
+        return 1
+      fi
+    fi
   elif [ "$PLATFORM" = "linux" ]; then
     info "Running: curl -fsSL https://ollama.com/install.sh | sh"
     curl -fsSL https://ollama.com/install.sh | sh
