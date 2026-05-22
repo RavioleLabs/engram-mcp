@@ -87,6 +87,21 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         const scope = (args.scope as string | undefined) ?? 'personal';
         const extraProps = (args.properties as Record<string, unknown> | undefined) ?? {};
 
+        // SECURITY: cap content size to 1 MB. Prevents OOM from a single
+        // remember() call and avoids embedding/chunking absurd inputs (each
+        // embedding call is a heavy Ollama round-trip).
+        const MAX_CONTENT_BYTES = 1_000_000;
+        if (typeof content !== 'string') {
+          throw new Error('content must be a string');
+        }
+        const contentBytes = Buffer.byteLength(content, 'utf-8');
+        if (contentBytes > MAX_CONTENT_BYTES) {
+          throw new Error(
+            `content too large (${Math.round(contentBytes / 1024)} KB) — max ${MAX_CONTENT_BYTES / 1024} KB. ` +
+              `Split into multiple remember() calls or use ingest() for large files.`,
+          );
+        }
+
         const contentHash = createHash('sha256').update(content).digest('hex');
 
         // Idempotency: check for existing memory with same content_hash + type
@@ -1668,6 +1683,27 @@ async function routeIngest(
   let normalUri = uri;
   if (!uri.startsWith('http') && !uri.startsWith('obsidian://') && !uri.startsWith('file://')) {
     normalUri = `file://${uri}`;
+  }
+
+  // ── Security: validate URI before any fetch / readFile ──────────────────────
+  // Blocks SSRF (private/internal IPs, AWS IMDS) and arbitrary local file reads
+  // (file:// must be inside ~/Documents, ~/Downloads, ~/Desktop, ~/Movies,
+  // ~/Music, or config.ingest.allowedPaths).
+  // OAuth-bound URLs (Drive, Notion) and obsidian:// are skipped — they go
+  // through their own connectors with hardcoded API hosts.
+  const isOauthBoundUrl =
+    normalUri.startsWith('https://docs.google.com/document/d/') ||
+    normalUri.startsWith('https://drive.google.com/file/') ||
+    normalUri.startsWith('https://www.notion.so/') ||
+    normalUri.startsWith('obsidian://');
+  if (!isOauthBoundUrl) {
+    const { validateFileUri, validateHttpUri } = await import('../../core/security/uri-validator.js');
+    const extraAllowed = (config as unknown as { ingest?: { allowedPaths?: string[] } }).ingest?.allowedPaths ?? [];
+    if (normalUri.startsWith('file://')) {
+      validateFileUri(normalUri, extraAllowed);
+    } else if (normalUri.startsWith('http://') || normalUri.startsWith('https://')) {
+      await validateHttpUri(normalUri);
+    }
   }
 
   // ── YouTube ─────────────────────────────────────────────────────────────────

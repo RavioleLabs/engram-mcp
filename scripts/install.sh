@@ -522,13 +522,20 @@ pair_account() {
       info "Pair later: engram-mcp pair"
       return 0
     fi
-    python3 - <<PY
+    # SECURITY: pass response via stdin, NEVER inject into Python source code.
+    # If we did `raw = r"""$REDEEM_RESPONSE"""`, a compromised API serving a
+    # response containing `"""` could break out of the string and run arbitrary
+    # Python on the user's machine during this `curl | sh` install.
+    printf '%s' "$REDEEM_RESPONSE" | python3 - <<'PY'
 import json, sys, os, datetime
-raw = r"""$REDEEM_RESPONSE"""
+raw = sys.stdin.read()
 try:
     data = json.loads(raw)
 except Exception as e:
     print(f"  Warning: could not parse redeem response: {e}", file=sys.stderr)
+    sys.exit(0)
+if not isinstance(data, dict):
+    print("  Warning: redeem response is not a JSON object", file=sys.stderr)
     sys.exit(0)
 config_dir = os.path.expanduser("~/.engram")
 os.makedirs(config_dir, exist_ok=True)
@@ -541,16 +548,18 @@ if os.path.exists(config_path):
     except Exception:
         pass
 existing["engramAccount"] = {
-    "jwt": data.get("jwt", ""),
-    "refreshToken": data.get("refresh_token", ""),
-    "apiKey": data.get("api_key", ""),
+    "jwt": data.get("jwt", "") if isinstance(data.get("jwt", ""), str) else "",
+    "refreshToken": data.get("refresh_token", "") if isinstance(data.get("refresh_token", ""), str) else "",
+    "apiKey": data.get("api_key", "") if isinstance(data.get("api_key", ""), str) else "",
     "masterKeySalt": existing.get("engramAccount", {}).get("masterKeySalt", ""),
     "pairedAt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
 with open(config_path, "w") as f:
     json.dump(existing, f, indent=2)
 os.chmod(config_path, 0o600)
-email = data.get("user", {}).get("email", "your account")
+user_obj = data.get("user", {}) if isinstance(data.get("user", {}), dict) else {}
+email = user_obj.get("email", "your account")
+if not isinstance(email, str): email = "your account"
 print(f"  Linked to {email}")
 PY
     info "Tokens saved to ~/.engram/config.json (chmod 600)"
