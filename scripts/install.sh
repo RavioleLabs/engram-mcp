@@ -531,12 +531,13 @@ pair_account() {
       info "Pair later: engram-mcp pair"
       return 0
     fi
-    # SECURITY: pass response via stdin, NEVER inject into Python source code.
-    # If we did `raw = r"""$REDEEM_RESPONSE"""`, a compromised API serving a
-    # response containing `"""` could break out of the string and run arbitrary
-    # Python on the user's machine during this `curl | sh` install.
+    # SECURITY: write Python script to a temp file (not heredoc) so we can
+    # pipe REDEEM_RESPONSE via stdin without conflict. If we used `python3 -
+    # <<'PY'`, the heredoc consumes stdin as the script source and our pipe is
+    # silently dropped — sys.stdin.read() returns "" — empty JSON parse fail.
     PAIR_OK=0
-    if printf '%s' "$REDEEM_RESPONSE" | python3 - <<'PY' >/tmp/engram-pair.out 2>&1
+    PY_SCRIPT=$(mktemp -t engram-py-XXXXXX).py
+    cat > "$PY_SCRIPT" <<'PY'
 import json, sys, os, datetime
 raw = sys.stdin.read()
 try:
@@ -574,11 +575,11 @@ email = user_obj.get("email", "your account")
 if not isinstance(email, str): email = "your account"
 print(f"OK: linked to {email}")
 PY
-    then
+    if printf '%s' "$REDEEM_RESPONSE" | python3 "$PY_SCRIPT" > /tmp/engram-pair.out 2>&1; then
       PAIR_OK=1
     fi
     PYTHON_OUT=$(cat /tmp/engram-pair.out 2>/dev/null)
-    rm -f /tmp/engram-pair.out
+    rm -f /tmp/engram-pair.out "$PY_SCRIPT"
     if [ $PAIR_OK -ne 1 ]; then
       warn "Could not save pair tokens — engram-mcp installed but not linked to cloud"
       printf '  %s\n' "$PYTHON_OUT" | head -3
