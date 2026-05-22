@@ -512,13 +512,22 @@ pair_account() {
   if [ -n "${INVITE_TOKEN:-}" ]; then
     info "Invite token detected: ${INVITE_TOKEN}"
     info "Calling https://api.engram-mcp.com/api/pair/redeem-invite"
-    REDEEM_RESPONSE=$(curl -sf -X POST https://api.engram-mcp.com/api/pair/redeem-invite \
+    # Capture body and HTTP status separately. No -f flag so we see the actual
+    # 4xx body (useful for diagnosing 'invalid_or_expired_invite').
+    REDEEM_TMP=$(mktemp -t engram-redeem-XXXXXX)
+    HTTP_CODE=$(curl -s -o "$REDEEM_TMP" -w '%{http_code}' -X POST https://api.engram-mcp.com/api/pair/redeem-invite \
       -H "Content-Type: application/json" \
-      -d "{\"invite_token\":\"$INVITE_TOKEN\"}" 2>&1)
-    REDEEM_EXIT=$?
-    if [ $REDEEM_EXIT -ne 0 ] || [ -z "$REDEEM_RESPONSE" ]; then
-      warn "Redemption failed — token expired or already used"
-      info "engram-mcp still works locally (no cloud sync)"
+      -d "{\"invite_token\":\"$INVITE_TOKEN\"}" 2>/dev/null)
+    REDEEM_RESPONSE=$(cat "$REDEEM_TMP" 2>/dev/null)
+    rm -f "$REDEEM_TMP"
+    info "HTTP ${HTTP_CODE} — response: $(printf '%s' "$REDEEM_RESPONSE" | head -c 200)"
+    if [ "$HTTP_CODE" != "200" ]; then
+      warn "Pairing failed (HTTP ${HTTP_CODE}) — engram-mcp installed but not linked to cloud"
+      info "Pair later: engram-mcp pair"
+      return 0
+    fi
+    if [ -z "$REDEEM_RESPONSE" ]; then
+      warn "API returned empty body (HTTP 200) — pairing skipped"
       info "Pair later: engram-mcp pair"
       return 0
     fi
@@ -526,31 +535,34 @@ pair_account() {
     # If we did `raw = r"""$REDEEM_RESPONSE"""`, a compromised API serving a
     # response containing `"""` could break out of the string and run arbitrary
     # Python on the user's machine during this `curl | sh` install.
-    printf '%s' "$REDEEM_RESPONSE" | python3 - <<'PY'
+    PAIR_OK=0
+    if printf '%s' "$REDEEM_RESPONSE" | python3 - <<'PY' >/tmp/engram-pair.out 2>&1
 import json, sys, os, datetime
 raw = sys.stdin.read()
 try:
     data = json.loads(raw)
 except Exception as e:
-    print(f"  Warning: could not parse redeem response: {e}", file=sys.stderr)
-    sys.exit(0)
+    print(f"PARSE_FAIL: {e}", file=sys.stderr)
+    sys.exit(1)
 if not isinstance(data, dict):
-    print("  Warning: redeem response is not a JSON object", file=sys.stderr)
-    sys.exit(0)
+    print("NOT_DICT", file=sys.stderr); sys.exit(1)
+jwt = data.get("jwt", "")
+api_key = data.get("api_key", "")
+if not isinstance(jwt, str) or not jwt or not isinstance(api_key, str) or not api_key:
+    print("MISSING_TOKENS", file=sys.stderr); sys.exit(1)
 config_dir = os.path.expanduser("~/.engram")
 os.makedirs(config_dir, exist_ok=True)
 config_path = os.path.join(config_dir, "config.json")
 existing = {}
 if os.path.exists(config_path):
     try:
-        with open(config_path) as f:
-            existing = json.load(f)
+        with open(config_path) as f: existing = json.load(f)
     except Exception:
         pass
 existing["engramAccount"] = {
-    "jwt": data.get("jwt", "") if isinstance(data.get("jwt", ""), str) else "",
+    "jwt": jwt,
     "refreshToken": data.get("refresh_token", "") if isinstance(data.get("refresh_token", ""), str) else "",
-    "apiKey": data.get("api_key", "") if isinstance(data.get("api_key", ""), str) else "",
+    "apiKey": api_key,
     "masterKeySalt": existing.get("engramAccount", {}).get("masterKeySalt", ""),
     "pairedAt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
@@ -560,8 +572,20 @@ os.chmod(config_path, 0o600)
 user_obj = data.get("user", {}) if isinstance(data.get("user", {}), dict) else {}
 email = user_obj.get("email", "your account")
 if not isinstance(email, str): email = "your account"
-print(f"  Linked to {email}")
+print(f"OK: linked to {email}")
 PY
+    then
+      PAIR_OK=1
+    fi
+    PYTHON_OUT=$(cat /tmp/engram-pair.out 2>/dev/null)
+    rm -f /tmp/engram-pair.out
+    if [ $PAIR_OK -ne 1 ]; then
+      warn "Could not save pair tokens — engram-mcp installed but not linked to cloud"
+      printf '  %s\n' "$PYTHON_OUT" | head -3
+      info "Pair later: engram-mcp pair"
+      return 0
+    fi
+    info "$PYTHON_OUT"
     info "Tokens saved to ~/.engram/config.json (chmod 600)"
 
     if [ "${ENGRAM_NO_BROWSER:-}" != "1" ]; then
