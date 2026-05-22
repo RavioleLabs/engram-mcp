@@ -167,8 +167,10 @@ async function transcribeLocal(
   // Remove stale JSON if present
   if (fs.existsSync(jsonOutputPath)) fs.unlinkSync(jsonOutputPath);
 
-  // nodejs-whisper's Logger type requires a `log` method in addition to debug/info/warn/error
-  const whisperLogger = { ...log, log: log.info };
+  // nodejs-whisper's Logger type now requires the full Console interface (TS 5.7.3+).
+  // Our app logger only has log/debug/info/warn/error — cast away the extras since
+  // nodejs-whisper only calls those 5 in practice.
+  const whisperLogger = { ...log, log: log.info } as unknown as Console;
 
   const rawResult = (await nodewhisper(audioPath, {
     modelName: config.model,
