@@ -38,6 +38,13 @@ async function main() {
         'https://api.engram-mcp.com'
       : 'https://api.engram-mcp.com';
 
+  // --token <TOKEN> short-circuit: skip the browser callback flow and redeem
+  // an invite token directly. This is what the dashboard surfaces when a user
+  // already has engram-mcp installed and just wants to re-pair after a revoke.
+  const tokenArg = process.argv.indexOf('--token');
+  const inviteToken =
+    tokenArg !== -1 ? process.argv[tokenArg + 1] : process.env.ENGRAM_INVITE_TOKEN || null;
+
   // Load config to get dataDir
   const config = loadConfig();
   initDb(config.dataDir);
@@ -46,14 +53,57 @@ async function main() {
     console.log('\n  Note: Re-pairing will replace existing tokens.\n');
   }
 
-  // Start pairing flow — opens browser automatically
   let result: { jwt: string; refreshToken: string; apiKey: string; expiresAt: number };
-  try {
-    result = await startPairing({ baseUrl });
-  } catch (e) {
-    log.error(`Pairing failed: ${e instanceof Error ? e.message : String(e)}`);
-    console.error(`\n  Pairing failed: ${e instanceof Error ? e.message : String(e)}`);
-    process.exit(1);
+
+  if (inviteToken) {
+    // Direct redemption — same endpoint install.sh hits at step 8
+    if (!/^[A-Za-z0-9_-]{6,32}$/.test(inviteToken)) {
+      console.error('\n  Invalid token format (expected 6-32 url-safe chars)\n');
+      process.exit(1);
+    }
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/pair/redeem-invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: inviteToken }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`\n  Redeem failed (HTTP ${res.status}): ${body.slice(0, 200)}\n`);
+        process.exit(1);
+      }
+      const data = (await res.json()) as {
+        jwt: string;
+        refresh_token: string;
+        api_key: string;
+        expires_at?: number;
+        user?: { email?: string };
+      };
+      if (!data.jwt || !data.api_key) {
+        console.error('\n  Redeem response missing tokens\n');
+        process.exit(1);
+      }
+      result = {
+        jwt: data.jwt,
+        refreshToken: data.refresh_token,
+        apiKey: data.api_key,
+        expiresAt: data.expires_at ?? Date.now() + 30 * 24 * 60 * 60 * 1000,
+      };
+      console.log(`\n  ✓ Linked to ${data.user?.email ?? 'your account'}`);
+    } catch (e) {
+      console.error(`\n  Pairing failed: ${e instanceof Error ? e.message : String(e)}\n`);
+      process.exit(1);
+    }
+  } else {
+    // Interactive browser flow (kept for users who run `engram-mcp pair`
+    // without any args — same UX as install.sh's initial pair step).
+    try {
+      result = await startPairing({ baseUrl });
+    } catch (e) {
+      log.error(`Pairing failed: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(`\n  Pairing failed: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
   }
 
   // Generate or reuse master key salt
@@ -77,8 +127,25 @@ async function main() {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(updatedConfig, null, 2));
   fs.chmodSync(CONFIG_PATH, 0o600);
 
-  console.log('\n  Paired successfully (api key stored locally)');
-  console.log('  Bridge will connect on next engram-mcp start.');
+  console.log('\n  ✓ Paired successfully (tokens saved to ~/.engram/config.json)');
+
+  // Restart the service so the bridge picks up the fresh tokens. Without
+  // this the user has to manually kickstart, which defeats the one-command
+  // re-pair UX.
+  try {
+    const { spawnSync } = await import('node:child_process');
+    if (process.platform === 'darwin') {
+      const uid = process.getuid?.() ?? 0;
+      const r = spawnSync('launchctl', ['kickstart', '-k', `gui/${uid}/com.ravolelabs.engram`]);
+      if (r.status === 0) console.log('  ✓ Restarted background service — bridge now connecting');
+    } else if (process.platform === 'linux') {
+      const r = spawnSync('systemctl', ['--user', 'restart', 'engram.service']);
+      if (r.status === 0) console.log('  ✓ Restarted background service — bridge now connecting');
+    }
+  } catch {
+    console.log('  (Bridge will connect on next engram-mcp start.)');
+  }
+
   console.log(`\n  Open your dashboard: https://engram-mcp.com/dashboard\n`);
 }
 
