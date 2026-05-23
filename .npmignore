@@ -5,8 +5,29 @@ scripts/
 .git/
 .vscode/
 .idea/
+.vercel/
+
+# Don't ship test code in the published tarball — tests pull in fixtures
+# (transcript snippets, audio samples) and reveal internal module layout
+# beyond what the public tool surface exposes.
 *.test.ts
 **/*.test.ts
+*.test.js
+**/*.test.js
+*.test.d.ts
+**/*.test.d.ts
+*.test.js.map
+**/*.test.js.map
+*.test.d.ts.map
+**/*.test.d.ts.map
 tests/
+**/tests/
+
+# Internal docs — never ship to npm even if `files` is loosened later
+CLAUDE.md
+RUNBOOK.md
+RUNBOOK-LOCAL.md
+AUDIT.md
+
 node_modules/
 *.log

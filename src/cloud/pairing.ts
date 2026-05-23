@@ -64,17 +64,53 @@ function openBrowser(url: string): void {
  */
 function startCallbackServer(): Promise<PairingResult> {
   return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
       if (!req.url?.startsWith('/callback')) {
         res.writeHead(404);
         res.end('Not found');
         return;
       }
 
+      // SECURITY: prefer reading tokens from the request body (POST) rather
+      // than the URL query string. URLs end up in DevTools Network panel,
+      // server access logs, and Referer headers — bodies do not. Fall back
+      // to query string so dashboards predating this change still work.
+      let jwt = '';
+      let refreshToken = '';
+      let apiKey = '';
       const parsed = new URL(req.url, `http://localhost:${CALLBACK_PORT}`);
-      const jwt = parsed.searchParams.get('jwt') ?? '';
-      const refreshToken = parsed.searchParams.get('refreshToken') ?? '';
-      const apiKey = parsed.searchParams.get('apiKey') ?? '';
+
+      if (req.method === 'POST') {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        const MAX = 64 * 1024; // 64 KB cap — tokens are tiny; reject larger
+        try {
+          for await (const chunk of req) {
+            const buf = chunk as Buffer;
+            total += buf.length;
+            if (total > MAX) {
+              res.writeHead(413);
+              res.end('Body too large');
+              return;
+            }
+            chunks.push(buf);
+          }
+          const raw = Buffer.concat(chunks).toString('utf8');
+          if (raw) {
+            const body = JSON.parse(raw) as Record<string, unknown>;
+            if (typeof body.jwt === 'string') jwt = body.jwt;
+            if (typeof body.refreshToken === 'string') refreshToken = body.refreshToken;
+            if (typeof body.apiKey === 'string') apiKey = body.apiKey;
+          }
+        } catch {
+          // Body unreadable or not JSON — fall through to query string
+        }
+      }
+
+      // Query-string fallback for backwards compatibility with older dashboards
+      if (!jwt) jwt = parsed.searchParams.get('jwt') ?? '';
+      if (!refreshToken) refreshToken = parsed.searchParams.get('refreshToken') ?? '';
+      if (!apiKey) apiKey = parsed.searchParams.get('apiKey') ?? '';
 
       if (!jwt || !refreshToken || !apiKey) {
         res.writeHead(400, { 'Content-Type': 'text/html' });

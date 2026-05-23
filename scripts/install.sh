@@ -19,6 +19,25 @@ VERSION="${ENGRAM_VERSION:-latest}"
 NPM_PKG="@raviolelabs/engram-mcp"
 SRC_DIR="$HOME/.engram/src"
 
+# SECURITY: validate INVITE_TOKEN early. The token is later interpolated into
+# a JSON body for the /pair/redeem-invite call — if it contained `"` or `\`
+# the JSON would be malformed (no shell injection, but the user gets a
+# confusing API error instead of a clear "bad token" message). Reject any
+# token outside the alphabet the server actually issues.
+if [ -n "${INVITE_TOKEN:-}" ]; then
+  case "$INVITE_TOKEN" in
+    *[!A-Za-z0-9_-]*|"")
+      printf '  \033[31m✗\033[0m INVITE_TOKEN contains invalid characters. Expected only A-Z a-z 0-9 _ - (got: %s)\n' "$INVITE_TOKEN" >&2
+      exit 1
+      ;;
+  esac
+  TOKEN_LEN=${#INVITE_TOKEN}
+  if [ "$TOKEN_LEN" -lt 8 ] || [ "$TOKEN_LEN" -gt 64 ]; then
+    printf '  \033[31m✗\033[0m INVITE_TOKEN length (%s) outside allowed range 8..64\n' "$TOKEN_LEN" >&2
+    exit 1
+  fi
+fi
+
 START_TS=$(date +%s)
 TOTAL_STEPS=8
 CURRENT_STEP=0
