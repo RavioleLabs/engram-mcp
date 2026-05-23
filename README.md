@@ -3,7 +3,7 @@
 > Local-first semantic memory layer for AI agents.
 
 [![npm](https://img.shields.io/npm/v/@raviolelabs/engram-mcp?label=npm)](https://www.npmjs.com/package/@raviolelabs/engram-mcp)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Elastic 2.0](https://img.shields.io/badge/License-Elastic%202.0-005571.svg)](LICENSE)
 
 EngramMCP is the memory layer your agents need — ingests from your real sources (notes, conversations, Drive, Notion, YouTube, Obsidian, audio, custom types) and exposes a standard MCP server for any agent runtime (Claude Code, Cursor, custom Anthropic/OpenAI runtimes).
 
@@ -25,7 +25,7 @@ This `npm install`s the package, sets up Ollama (auto-installed if missing), pul
 
 ### Manual install (no cloud account needed)
 
-The local server is MIT-licensed and works fully offline. Install via npm:
+The local server is source-available under the Elastic License 2.0 and works fully offline. Install via npm:
 
 ```bash
 npm install -g @raviolelabs/engram-mcp
@@ -99,10 +99,10 @@ Billing via [Polar](https://polar.sh) (Merchant of Record, handles EU VAT). Canc
 
 ## Open / Closed boundary
 
-- **Local server**: MIT, open source, in this repo. Anyone can audit, fork, self-host. No telemetry, no phone-home for the local-only path.
+- **Local server**: Elastic License 2.0, source-available, in this repo. Anyone can audit, fork, self-host for their own use. Offering a competing hosted/managed Engram service is prohibited. No telemetry, no phone-home for the local-only path.
 - **Cloud workers** (`engram-cloud`): proprietary, source-closed. The bridge relay, hosted embeddings, billing, and multi-PC sync are paid SaaS. They handle only encrypted blobs — server-side decryption is mathematically impossible (XChaCha20-Poly1305 + Argon2id passphrase-derived keys).
 - **Browser extension + Mobile apps**: distributed via Chrome Web Store, Apple App Store, Google Play. Source is closed.
-- **Skill plugin** (`engram-skill`): MIT, public — separate repo, optional install for Claude Code users.
+- **Skill plugin** (`engram-skill`): Elastic License 2.0, source-available — separate repo, optional install for Claude Code users.
 
 ---
 
@@ -224,4 +224,4 @@ Issues, PRs, and Discord chat welcome.
 
 ## License
 
-MIT
+[Elastic License 2.0](LICENSE) — source-available. You may use, fork, modify, and self-host EngramMCP for your own use. You may **not** offer it as a hosted or managed service that provides users access to a substantial set of its features (this is what RavioleLabs offers as the paid cloud — the bridge relay, hosted embeddings, multi-PC sync, and dashboard at engram-mcp.com). For competing service licensing, contact `hello@raviolelabs.com`.

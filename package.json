@@ -3,7 +3,7 @@
   "version": "0.5.0",
   "mcpName": "io.github.RavioleLabs/engram-mcp",
   "description": "EngramMCP \u2014 local-first semantic memory layer for AI agents",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "type": "module",
   "bin": {
     "engram-mcp": "dist/scripts/serve.js",
