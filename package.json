@@ -40,7 +40,7 @@
     "better-sqlite3": "12.8.0",
     "cytoscape": "3.33.3",
     "cytoscape-fcose": "2.2.0",
-    "express": "5.0.0",
+    "express": "5.2.1",
     "fast-xml-parser": "5.8.0",
     "googleapis": "144.0.0",
     "libsodium-wrappers": "0.8.4",
