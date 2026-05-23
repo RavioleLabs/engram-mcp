@@ -351,13 +351,49 @@ install_service() {
     return 0
   fi
 
-  BINARY_PATH="$INSTALL_DIR/$BINARY_NAME"
+  # Resolve the ACTUAL installed binary path. `npm install -g` puts it in npm's
+  # global bin (often /opt/homebrew/bin on Apple Silicon, /usr/local/bin on Intel,
+  # or $HOME/.engram/npm/.../bin on the user-local fallback). The earlier
+  # ${INSTALL_DIR}/${BINARY_NAME} was only valid in the fallback path.
+  if command -v "$BINARY_NAME" >/dev/null 2>&1; then
+    BINARY_PATH=$(command -v "$BINARY_NAME")
+  else
+    BINARY_PATH="$INSTALL_DIR/$BINARY_NAME"
+  fi
+
+  # Also expose a stable shim at ~/.local/bin so users can `engram-mcp` from any
+  # PATH config. Idempotent — overwrite any stale symlink.
+  mkdir -p "$INSTALL_DIR"
+  if [ "$BINARY_PATH" != "$INSTALL_DIR/$BINARY_NAME" ]; then
+    ln -sf "$BINARY_PATH" "$INSTALL_DIR/$BINARY_NAME"
+  fi
+
   mkdir -p "$HOME/.engram/logs"
 
   if [ "$PLATFORM" = "darwin" ]; then
     PLIST_DIR="$HOME/Library/LaunchAgents"
     PLIST_FILE="$PLIST_DIR/com.ravolelabs.engram.plist"
     mkdir -p "$PLIST_DIR"
+
+    # Resolve node + serve.js to absolute paths. The plist runs in launchd's
+    # env (not the user's shell), so a #!/usr/bin/env node shebang would pick
+    # whichever node is first in $PATH — historically /usr/local/bin (node 20)
+    # gets found before /opt/homebrew/bin (node 26), causing a
+    # NODE_MODULE_VERSION mismatch on better-sqlite3. Use direct paths so the
+    # service is deterministic.
+    NODE_PATH_ABS=$(command -v node || echo "/opt/homebrew/bin/node")
+    # serve.js lives at <npm-prefix>/lib/node_modules/@raviolelabs/engram-mcp/dist/scripts/serve.js
+    NPM_PREFIX=$(npm prefix -g 2>/dev/null || echo "/opt/homebrew")
+    SERVE_JS="${NPM_PREFIX}/lib/node_modules/${NPM_PKG}/dist/scripts/serve.js"
+    if [ ! -f "$SERVE_JS" ]; then
+      # Fallback: derive from the actual binary location (handles user-local prefix)
+      SERVE_JS="$(dirname "$(dirname "$BINARY_PATH")")/lib/node_modules/${NPM_PKG}/dist/scripts/serve.js"
+    fi
+
+    # PATH ordering: /opt/homebrew first so a homebrew Ollama / ffmpeg is
+    # preferred over an older /usr/local/bin one. Also include the user's
+    # .local/bin so any other shim resolves.
+    PLIST_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin"
 
     cat > "$PLIST_FILE" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -368,7 +404,8 @@ install_service() {
   <string>com.ravolelabs.engram</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${BINARY_PATH}</string>
+    <string>${NODE_PATH_ABS}</string>
+    <string>${SERVE_JS}</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -381,7 +418,7 @@ install_service() {
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:${HOME}/.local/bin</string>
+    <string>${PLIST_PATH}</string>
   </dict>
 </dict>
 </plist>
@@ -396,6 +433,13 @@ PLIST
     SYSTEMD_DIR="$HOME/.config/systemd/user"
     mkdir -p "$SYSTEMD_DIR"
 
+    NODE_PATH_ABS=$(command -v node || echo "/usr/bin/node")
+    NPM_PREFIX=$(npm prefix -g 2>/dev/null || echo "/usr/local")
+    SERVE_JS="${NPM_PREFIX}/lib/node_modules/${NPM_PKG}/dist/scripts/serve.js"
+    if [ ! -f "$SERVE_JS" ]; then
+      SERVE_JS="$(dirname "$(dirname "$BINARY_PATH")")/lib/node_modules/${NPM_PKG}/dist/scripts/serve.js"
+    fi
+
     cat > "$SYSTEMD_DIR/engram.service" <<SERVICE
 [Unit]
 Description=EngramMCP local memory server
@@ -403,7 +447,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${BINARY_PATH}
+ExecStart=${NODE_PATH_ABS} ${SERVE_JS}
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:${HOME}/.engram/logs/engram.log
