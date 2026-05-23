@@ -17,9 +17,44 @@
  * Reconnect: exponential backoff 1s → 2s → 4s → … capped at 60s.
  * The bridge client does NOT start if engramAccount is absent.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { ulid } from 'ulid';
 import { WebSocket } from 'ws';
 import { createLogger } from '../logger.js';
 import { getValidJwt } from './auth.js';
+
+/**
+ * Load or create a stable device_id for this machine. Persisted at
+ * ~/.engram/device-id so reconnects + restarts all use the same identifier.
+ * The cloud relay uses (user_id, device_id) to keep one row per physical
+ * machine in relay_sessions instead of one row per WS session.
+ */
+function getOrCreateDeviceIdentity(): { deviceId: string; deviceName: string } {
+  const engramDir = path.join(os.homedir(), '.engram');
+  const deviceFile = path.join(engramDir, 'device-id');
+  let deviceId: string | null = null;
+  try {
+    if (fs.existsSync(deviceFile)) {
+      const v = fs.readFileSync(deviceFile, 'utf8').trim();
+      if (v && v.length <= 64 && /^[A-Za-z0-9_-]+$/.test(v)) deviceId = v;
+    }
+  } catch {
+    // ignore — generate fresh below
+  }
+  if (!deviceId) {
+    deviceId = ulid();
+    try {
+      fs.mkdirSync(engramDir, { recursive: true });
+      fs.writeFileSync(deviceFile, deviceId + '\n', { mode: 0o600 });
+    } catch {
+      // best-effort — non-persistent device_id is still better than none
+    }
+  }
+  const deviceName = (os.hostname() || 'PC').slice(0, 64);
+  return { deviceId, deviceName };
+}
 
 const log = createLogger('cloud:bridge');
 
@@ -128,11 +163,15 @@ export interface BridgeClient {
 }
 
 export function startBridgeClient(opts: BridgeClientOptions): BridgeClient {
-  const wsUrl =
+  const { deviceId, deviceName } = getOrCreateDeviceIdentity();
+  const wsBase =
     opts.baseUrl
       .replace(/^https:\/\//, 'wss://')
       .replace(/^http:\/\//, 'ws://')
       .replace(/\/$/, '') + RELAY_PATH;
+  const wsUrl = `${wsBase}?device_id=${encodeURIComponent(
+    deviceId,
+  )}&device_name=${encodeURIComponent(deviceName)}`;
 
   let stopped = false;
   let ws: WebSocket | null = null;
