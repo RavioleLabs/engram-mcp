@@ -73,12 +73,28 @@ function runMigrations(db: Database.Database): void {
     { version: 6, sql: MIGRATION_6 },
     { version: 7, sql: MIGRATION_7 },
     { version: 8, sql: MIGRATION_8 },
+    { version: 9, sql: '' /* applied programmatically — see below */ },
   ];
 
   for (const m of migrations) {
     if (m.version > current) {
       log.info(`Applying migration v${m.version}`);
-      if (m.version === 8) {
+      if (m.version === 9) {
+        // Recall signals: importance, decay, skip/pin feedback, intent tagging,
+        // access tracking. All idempotent ADD COLUMN guarded by PRAGMA check.
+        const cols = db.prepare(`PRAGMA table_info(memories)`).all() as Array<{ name: string }>;
+        const has = (n: string) => cols.some((c) => c.name === n);
+        if (!has('access_count'))     db.exec(`ALTER TABLE memories ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0`);
+        if (!has('last_accessed_at')) db.exec(`ALTER TABLE memories ADD COLUMN last_accessed_at INTEGER`);
+        if (!has('importance'))       db.exec(`ALTER TABLE memories ADD COLUMN importance TEXT NOT NULL DEFAULT 'medium'`);
+        if (!has('pinned'))           db.exec(`ALTER TABLE memories ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
+        if (!has('skip_penalty'))     db.exec(`ALTER TABLE memories ADD COLUMN skip_penalty REAL NOT NULL DEFAULT 1.0`);
+        if (!has('intent'))           db.exec(`ALTER TABLE memories ADD COLUMN intent TEXT`);
+        if (!has('confidence'))       db.exec(`ALTER TABLE memories ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0`);
+        db.exec(`CREATE INDEX IF NOT EXISTS memories_importance_idx ON memories(importance, pinned)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS memories_intent_idx ON memories(intent)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS memories_accessed_idx ON memories(last_accessed_at DESC)`);
+      } else if (m.version === 8) {
         // SQLite lacks ADD COLUMN IF NOT EXISTS — guard programmatically
         const cols = db.prepare(`PRAGMA table_info(memories)`).all() as Array<{ name: string }>;
         if (!cols.some((c) => c.name === 'scope')) {

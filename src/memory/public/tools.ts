@@ -1581,6 +1581,204 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         return { deleted: typeName };
       },
     },
+
+    // ── skip / unskip / pin / unpin / set_importance ─────────────────────────
+    // Recall-signal tools. Cheap writes to the memories table — no embedding,
+    // no chunking, no vector index touch. Used by users (via dashboard) and by
+    // agents to teach the system what to surface vs hide vs preserve forever.
+    {
+      name: 'skip',
+      description: [
+        'Mark a memory as "not useful right now" — multiplies its skip_penalty by 0.2.',
+        'WHEN: a recall result is genuinely irrelevant and the agent shouldn\'t surface it again on similar queries.',
+        'NOT for deletion — the memory stays in storage and unskip() restores full rank.',
+        'IDEMPOTENT: calling twice multiplies penalty again (0.2 → 0.04). Use sparingly.',
+        'RETURNS: { id, skip_penalty: <new value> }.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+      handler: async (args) => {
+        const id = args.id as string;
+        const { getDb } = await import('../../db/index.js');
+        const db = getDb();
+        const result = db.prepare(
+          `UPDATE memories SET skip_penalty = MAX(0.001, skip_penalty * 0.2) WHERE id = ?`,
+        ).run(id);
+        if (result.changes === 0) return { error: 'not_found', id };
+        const row = db.prepare(`SELECT skip_penalty FROM memories WHERE id = ?`).get(id) as
+          | { skip_penalty: number }
+          | undefined;
+        return { id, skip_penalty: row?.skip_penalty };
+      },
+    },
+    {
+      name: 'unskip',
+      description: [
+        'Restore a previously skipped memory to full recall rank (skip_penalty = 1.0).',
+        'WHEN: the user corrects a wrongly skipped item, or you realise a "not useful" call was a mistake.',
+        'IDEMPOTENT: returns success even if the memory was never skipped.',
+        'RETURNS: { id, skip_penalty: 1.0 }.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+      handler: async (args) => {
+        const id = args.id as string;
+        const { getDb } = await import('../../db/index.js');
+        const r = getDb().prepare(`UPDATE memories SET skip_penalty = 1.0 WHERE id = ?`).run(id);
+        if (r.changes === 0) return { error: 'not_found', id };
+        return { id, skip_penalty: 1.0 };
+      },
+    },
+    {
+      name: 'pin',
+      description: [
+        'Pin a memory — exempts it from time-decay forever (until unpinned).',
+        'WHEN: critical preference, identity fact, or a piece of context that must never fade.',
+        'Pinned memories ignore the importance × half-life decay curve.',
+        'IDEMPOTENT: returns {pinned: true} regardless of prior state.',
+        'RETURNS: { id, pinned: true }.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+      handler: async (args) => {
+        const id = args.id as string;
+        const { getDb } = await import('../../db/index.js');
+        const r = getDb().prepare(`UPDATE memories SET pinned = 1 WHERE id = ?`).run(id);
+        if (r.changes === 0) return { error: 'not_found', id };
+        return { id, pinned: true };
+      },
+    },
+    {
+      name: 'unpin',
+      description: [
+        'Remove the pin from a memory — it resumes normal time-decay based on its importance.',
+        'IDEMPOTENT: returns {pinned: false} regardless of prior state.',
+        'RETURNS: { id, pinned: false }.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+      handler: async (args) => {
+        const id = args.id as string;
+        const { getDb } = await import('../../db/index.js');
+        const r = getDb().prepare(`UPDATE memories SET pinned = 0 WHERE id = ?`).run(id);
+        if (r.changes === 0) return { error: 'not_found', id };
+        return { id, pinned: false };
+      },
+    },
+    {
+      name: 'set_importance',
+      description: [
+        'Set a memory\'s importance level — affects decay half-life (high=90d, medium=30d, low=14d) and recall ranking.',
+        'WHEN: user marks something as critical, or the agent decides a memory deserves more/less prominence.',
+        'Default importance is set automatically at remember() time based on intent classification (preferences + corrections → high).',
+        'IDEMPOTENT.',
+        'RETURNS: { id, importance }.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          level: { type: 'string', enum: ['high', 'medium', 'low'] },
+        },
+        required: ['id', 'level'],
+      },
+      handler: async (args) => {
+        const id = args.id as string;
+        const level = args.level as string;
+        if (!['high', 'medium', 'low'].includes(level)) {
+          return { error: 'invalid_level', message: 'level must be high|medium|low' };
+        }
+        const { getDb } = await import('../../db/index.js');
+        const r = getDb().prepare(`UPDATE memories SET importance = ? WHERE id = ?`).run(level, id);
+        if (r.changes === 0) return { error: 'not_found', id };
+        return { id, importance: level };
+      },
+    },
+
+    // ── recall_chain ────────────────────────────────────────────────────────
+    // Graph traversal over wikilinks + related_ids — our answer to Neo4j-backed
+    // graph memory features in competing products. No external graph DB needed
+    // because we already store the edges in the memory row's related_ids array.
+    {
+      name: 'recall_chain',
+      description: [
+        'Traverse the memory graph from a starting memory id, following wikilinks + related_ids up to `depth` hops.',
+        'WHEN: "show me the chain of reasoning that led here", "what memories are connected to this decision?".',
+        'Returns memories grouped by hop distance — direct neighbors at depth 1, their neighbors at depth 2, etc.',
+        'ANTI-LOOP: depth is capped at 4 (silently). Memories are deduplicated across hops.',
+        'RETURNS: { root: id, chain: [{ depth, memories: [{ id, type, title, score }] }] }.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Starting memory id.' },
+          depth: { type: 'number', default: 2, description: 'Max hop distance (capped at 4).' },
+          limit_per_hop: { type: 'number', default: 10 },
+        },
+        required: ['id'],
+      },
+      handler: async (args) => {
+        const rootId = args.id as string;
+        const maxDepth = Math.min(4, Math.max(1, (args.depth as number) ?? 2));
+        const limitPerHop = Math.max(1, (args.limit_per_hop as number) ?? 10);
+        const root = store.getById(rootId);
+        if (!root) return { error: 'not_found', id: rootId };
+
+        const visited = new Set<string>([rootId]);
+        const chain: Array<{ depth: number; memories: Array<{ id: string; type: string; title?: string; via: 'wikilink' | 'related' }> }> = [];
+
+        type ChainEntry = { id: string; type: string; title: string | undefined; via: 'wikilink' | 'related' };
+        let frontier: string[] = [rootId];
+        for (let d = 1; d <= maxDepth; d++) {
+          const nextFrontier: Array<{ id: string; via: 'wikilink' | 'related' }> = [];
+          for (const fid of frontier) {
+            const m = store.getById(fid);
+            if (!m) continue;
+            for (const wl of m.wikilinks ?? []) {
+              const targetId = wl;
+              if (!visited.has(targetId)) {
+                visited.add(targetId);
+                nextFrontier.push({ id: targetId, via: 'wikilink' });
+              }
+            }
+            for (const rid of m.related_ids ?? []) {
+              if (!visited.has(rid)) {
+                visited.add(rid);
+                nextFrontier.push({ id: rid, via: 'related' });
+              }
+            }
+          }
+          if (nextFrontier.length === 0) break;
+          const hopMemories: ChainEntry[] = [];
+          for (const f of nextFrontier.slice(0, limitPerHop)) {
+            const m = store.getById(f.id);
+            if (!m) continue;
+            hopMemories.push({ id: m.id, type: m.type, title: m.properties.title, via: f.via });
+          }
+          if (hopMemories.length === 0) break;
+          chain.push({ depth: d, memories: hopMemories });
+          frontier = hopMemories.map((m) => m.id);
+        }
+
+        return {
+          root: { id: root.id, type: root.type, title: root.properties.title },
+          total_reached: visited.size - 1,
+          chain,
+        };
+      },
+    },
   ];
 }
 

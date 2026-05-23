@@ -81,12 +81,26 @@ export class MemoryStore {
       }
     }
 
+    // Auto-classify intent + default importance (Engram recall signals layer).
+    // Agent can override by setting properties.custom.{intent,importance,pinned} at remember() time.
+    const { classifyIntent, defaultImportance } = await import('./signals.js');
+    const custom = (item.properties.custom ?? {}) as Record<string, unknown>;
+    const intent = (typeof custom.intent === 'string' ? custom.intent : null) ??
+                   classifyIntent(item.content, item.properties.title, item.properties.tags);
+    const importance = (typeof custom.importance === 'string' && ['high', 'medium', 'low'].includes(custom.importance))
+      ? (custom.importance as 'high' | 'medium' | 'low')
+      : defaultImportance(intent as 'preference' | 'correction' | 'temporal' | 'factual' | 'other');
+    const pinned = custom.pinned === true ? 1 : 0;
+    const confidence = typeof custom.confidence === 'number' && custom.confidence > 0 && custom.confidence <= 1
+      ? custom.confidence : 1.0;
+
     const db = getDb();
     const insert = db.prepare(`
       INSERT OR REPLACE INTO memories
         (id, type, source_id, content, content_hash, properties_json,
-         wikilinks_json, related_ids_json, embedding_model, created_at, scope)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         wikilinks_json, related_ids_json, embedding_model, created_at, scope,
+         intent, importance, pinned, confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     insert.run(
@@ -101,6 +115,10 @@ export class MemoryStore {
       item.embedding_model,
       Date.parse(item.properties.created_at),
       item.scope ?? 'personal',
+      intent,
+      importance,
+      pinned,
+      confidence,
     );
 
     // FTS index
@@ -171,20 +189,63 @@ export class MemoryStore {
   }
 
   async search(memoryType: string, query: string, limit = 10): Promise<SearchResult[]> {
-    const hits = await semanticSearch(memoryType, query, this.options.embeddings, limit);
-    const results: SearchResult[] = [];
+    // Fetch wider than `limit` so signal_boost can re-rank — semantic hits
+    // sorted purely by cosine similarity often miss the high-importance + pinned
+    // memory by 1-2 positions. 3x overshoot gives the ranker enough material.
+    const hits = await semanticSearch(memoryType, query, this.options.embeddings, limit * 3);
+    const { signalBoost, effectiveConfidence, DEFAULT_SOFT_PURGE_THRESHOLD } = await import('./signals.js');
+    const db = getDb();
+
+    type Scored = { memory: MemoryItem; score: number; rank: number; snippet: string; effConf: number };
+    const scored: Scored[] = [];
+
     for (const hit of hits) {
-      // Derive memory id from chunk id (strip ":<index>" if present)
       const memoryId = hit.chunk.id.includes(':') ? hit.chunk.id.split(':')[0] : hit.chunk.id;
       const memory = this.getById(memoryId);
       if (!memory) continue;
-      results.push({
+
+      // Pull the signal columns directly — keep the public MemoryItem clean.
+      const sig = db.prepare(
+        `SELECT importance, pinned, skip_penalty, access_count, last_accessed_at, confidence, created_at
+         FROM memories WHERE id = ?`,
+      ).get(memoryId) as
+        | { importance: string; pinned: number; skip_penalty: number; access_count: number;
+            last_accessed_at: number | null; confidence: number; created_at: number }
+        | undefined;
+      if (!sig) continue;
+
+      const s = {
+        importance: (sig.importance as 'high' | 'medium' | 'low') ?? 'medium',
+        pinned: sig.pinned === 1,
+        skip_penalty: sig.skip_penalty ?? 1.0,
+        access_count: sig.access_count ?? 0,
+        last_accessed_at: sig.last_accessed_at,
+        confidence: sig.confidence ?? 1.0,
+        created_at: sig.created_at,
+      };
+      const effConf = effectiveConfidence(s);
+      if (effConf < DEFAULT_SOFT_PURGE_THRESHOLD) continue; // soft-purged
+
+      scored.push({
         memory,
         score: hit.similarity,
+        rank: hit.similarity * signalBoost(s),
         snippet: hit.chunk.content.slice(0, 200),
+        effConf,
       });
     }
-    return results;
+
+    // Sort by rank desc, slice to limit, bump access counters for the survivors.
+    scored.sort((a, b) => b.rank - a.rank);
+    const surviving = scored.slice(0, limit);
+    if (surviving.length > 0) {
+      const now = Date.now();
+      const bumpStmt = db.prepare(
+        `UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
+      );
+      for (const r of surviving) bumpStmt.run(now, r.memory.id);
+    }
+    return surviving.map((r) => ({ memory: r.memory, score: r.score, snippet: r.snippet }));
   }
 
   async delete(id: string): Promise<void> {
