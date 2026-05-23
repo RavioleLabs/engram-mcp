@@ -85,6 +85,11 @@
   "engines": {
     "node": ">=22"
   },
+  "overrides": {
+    "@yao-pkg/pkg": {
+      "minimatch": "9.0.7"
+    }
+  },
   "files": [
     "dist/",
     "src/private/README.md",
