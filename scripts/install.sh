@@ -638,6 +638,20 @@ PY
     info "$PYTHON_OUT"
     info "Tokens saved to ~/.engram/config.json (chmod 600)"
 
+    # Restart the service so it picks up the freshly-written engramAccount
+    # tokens and starts the Bridge Relay client. Without this, the service
+    # is already running (started in step 7 before pairing) without tokens
+    # and would just sit there with the bridge dormant.
+    if [ "$PLATFORM" = "darwin" ]; then
+      if launchctl kickstart -k "gui/$UID/com.ravolelabs.engram" 2>/dev/null; then
+        info "Restarted background service — bridge now connecting"
+      fi
+    elif [ "$PLATFORM" = "linux" ]; then
+      if systemctl --user restart engram.service 2>/dev/null; then
+        info "Restarted background service — bridge now connecting"
+      fi
+    fi
+
     if [ "${ENGRAM_NO_BROWSER:-}" != "1" ]; then
       DASHBOARD_URL="https://engram-mcp.com/welcome?session=$(python3 -c "
 import json, urllib.parse, os
