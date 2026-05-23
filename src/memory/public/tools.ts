@@ -1867,7 +1867,7 @@ async function handleAsyncIngest(
 
 // ── Ingest routing helper ─────────────────────────────────────────────────────
 
-async function routeIngest(
+export async function routeIngest(
   uri: string,
   forceType: string | undefined,
   titleOverride: string | undefined,

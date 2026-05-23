@@ -193,6 +193,29 @@ export function memoriesApi(store: MemoryStore): Router {
   });
 
   // -------------------------------------------------------------------------
+  // POST /api/memories/ingest — URI-based ingestion (YouTube, Drive, Notion, ...)
+  // Body: { uri: string, type?: string, title?: string, tags?: string[] }
+  // Routes through the same `routeIngest` pipeline used by the MCP tool so
+  // the dashboard's "Paste a YouTube URL" form has parity with agent ingest.
+  // -------------------------------------------------------------------------
+  r.post('/ingest', async (req: Request, res: Response) => {
+    const body = req.body as { uri?: string; type?: string; title?: string; tags?: string[] };
+    if (!body.uri || typeof body.uri !== 'string') {
+      res.status(400).json({ error: 'uri_required' });
+      return;
+    }
+    try {
+      const { routeIngest } = await import('../../memory/public/tools.js');
+      const config = loadConfig();
+      const result = await routeIngest(body.uri, body.type, body.title, body.tags, store, config);
+      res.status(201).json(result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(500).json({ error: 'ingest_failed', message: msg });
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // POST /api/memories/upload — file upload (md/txt/pdf/audio/images)
   // -------------------------------------------------------------------------
   r.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
