@@ -4,6 +4,13 @@ node_modules/
 # Build output
 dist/
 
+# Build artifacts that should NEVER live in this repo — accidental presence
+# usually means a wrong cwd during a Next-on-pages build (the directory name
+# is legacy Vercel "Build Output Format" reused by @cloudflare/next-on-pages,
+# we don't actually use Vercel).
+.vercel/
+.next/
+
 # Environment — NEVER commit secrets
 .env
 .env.local
