@@ -28,27 +28,43 @@ export function closeDb(): void {
 
 export function initDb(dataDir: string): Database.Database {
   const resolved = resolvePath(dataDir);
-  fs.mkdirSync(resolved, { recursive: true, mode: 0o700 });
+
+  // SECURITY: tighten umask around dir + sqlite open so we never leave a
+  // window where engram.db / engram.db-wal / engram.db-shm are world-readable.
+  // The previous code did mkdir(mode:0o700) + chmodSync(0o600) AFTER open —
+  // between sqlite-open and chmod, another local user on a shared box could
+  // open the freshly-created file and read it. umask 0o077 applied to every
+  // file/dir created during this block closes that window.
+  const prevUmask = process.umask(0o077);
   try {
-    fs.chmodSync(resolved, 0o700);
-  } catch {}
+    fs.mkdirSync(resolved, { recursive: true, mode: 0o700 });
+    try {
+      fs.chmodSync(resolved, 0o700);
+    } catch {}
 
-  const dbPath = path.join(resolved, 'engram.db');
-  log.info(`Opening database at ${dbPath}`);
+    const dbPath = path.join(resolved, 'engram.db');
+    log.info(`Opening database at ${dbPath}`);
 
-  _db = new Database(dbPath);
-  _db.pragma('journal_mode = WAL');
-  _db.pragma('foreign_keys = ON');
-  _db.pragma('synchronous = NORMAL');
+    _db = new Database(dbPath);
+    _db.pragma('journal_mode = WAL');
+    _db.pragma('foreign_keys = ON');
+    _db.pragma('synchronous = NORMAL');
 
-  try {
-    fs.chmodSync(dbPath, 0o600);
-  } catch {}
+    // Belt-and-suspenders: chmod the 3 sqlite files explicitly. -wal/-shm
+    // get created lazily on first write; chmod is best-effort.
+    for (const f of ['engram.db', 'engram.db-wal', 'engram.db-shm']) {
+      try {
+        fs.chmodSync(path.join(resolved, f), 0o600);
+      } catch {}
+    }
 
-  runMigrations(_db);
-  log.info('Database ready');
+    runMigrations(_db);
+    log.info('Database ready');
 
-  return _db;
+    return _db;
+  } finally {
+    process.umask(prevUmask);
+  }
 }
 
 function runMigrations(db: Database.Database): void {

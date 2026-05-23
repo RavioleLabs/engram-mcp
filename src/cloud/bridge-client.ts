@@ -135,9 +135,22 @@ async function forwardToLocal(req: TunnelRequest, localPort: number): Promise<Tu
   }
 
   const responseBody = await res.text();
+  // SECURITY: only forward a fixed whitelist of headers back through the
+  // cloud relay. Forwarding everything would leak Set-Cookie, Authorization,
+  // and any future auth headers the local /api/* might emit — those should
+  // never leave the user's machine.
+  const SAFE_HEADERS = new Set([
+    'content-type',
+    'content-length',
+    'cache-control',
+    'etag',
+    'last-modified',
+  ]);
   const responseHeaders: Record<string, string> = {};
   res.headers.forEach((value, key) => {
-    responseHeaders[key] = value;
+    if (SAFE_HEADERS.has(key.toLowerCase())) {
+      responseHeaders[key] = value;
+    }
   });
 
   return {

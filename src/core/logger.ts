@@ -86,8 +86,19 @@ let logFd: number | null = null;
 function openLogFd(): number | null {
   if (logFd !== null) return logFd;
   try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    logFd = fs.openSync(LOG_FILE, 'a');
+    // SECURITY: 0700 on the dir + 0600 on the file. The log can contain
+    // request URLs, error messages with surrounding context, and (despite
+    // the redactor below) edge cases we missed — keep it readable only by
+    // the owning user.
+    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true, mode: 0o700 });
+    logFd = fs.openSync(LOG_FILE, 'a', 0o600);
+    // openSync mode is only honored when the file is CREATED. If the log
+    // already existed with looser perms, chmod it down explicitly.
+    try {
+      fs.chmodSync(LOG_FILE, 0o600);
+    } catch {
+      /* race or perms — best-effort */
+    }
   } catch {
     logFd = null;
   }
@@ -156,12 +167,18 @@ const RESET = '\x1b[0m';
 const SECRET_PATTERNS = [
   /sk-[A-Za-z0-9\-_]{20,}/g, // Anthropic / Stripe API keys
   /pk-[A-Za-z0-9\-_]{20,}/g, // Public keys
-  /Bearer\s+[A-Za-z0-9\-_.~+/]{20,}/g, // Bearer tokens
+  /Bearer\s+[A-Za-z0-9\-_.~+/]+=*/g, // Bearer tokens (any length; HTTP grammar)
   /ntn_[A-Za-z0-9]{20,}/g, // Notion tokens
   /xoxb-[A-Za-z0-9\-]{20,}/g, // Slack bot tokens
   /ghp_[A-Za-z0-9]{20,}/g, // GitHub PATs
   /gho_[A-Za-z0-9]{20,}/g, // GitHub OAuth tokens
-  /eyJ[A-Za-z0-9\-_]{30,}\.[A-Za-z0-9\-_]{30,}/g, // JWTs
+  // JWT: header.payload.signature — require all three base64url segments so
+  // we don't mistakenly match "eyJ…" inside arbitrary base64 blobs.
+  /eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+/g,
+  // Engram-issued API key — see engram-cloud/workers/shared/apikey.ts:
+  // raw = "engram_" + 64 hex chars (32 random bytes). Catch the full token,
+  // not just the 15-char prefix which is also stored DB-side for display.
+  /engram_[a-f0-9]{32,}/g,
 ];
 
 function sanitizeLogData(data: unknown): unknown {

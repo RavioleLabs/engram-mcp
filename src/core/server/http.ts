@@ -37,13 +37,22 @@ export function startWebapp(options: WebappOptions): { app: Express; server: htt
   const app = express();
   app.use(express.json({ limit: '4mb', strict: false }));
 
-  // Permissive CORS for localhost dev (any localhost port)
+  // SECURITY: restrict CORS to the configured port + standard dev ports.
+  // Previous code allowed any localhost:* origin, which meant a malicious
+  // process on another localhost port (e.g. a compromised dev server, a
+  // worm in an npm postinstall) could read the user's memories via the
+  // dashboard API. Now only same-port + vite/next dev defaults are allowed.
+  const allowedOrigins = new Set<string>([
+    `http://localhost:${options.port}`,
+    `http://127.0.0.1:${options.port}`,
+    'http://localhost:5173', // vite default (engram-mcp client dev)
+    'http://127.0.0.1:5173',
+    'http://localhost:3000', // next default (rarely needed locally)
+    'http://127.0.0.1:3000',
+  ]);
   app.use((req, res, next) => {
     const origin = req.headers.origin ?? '';
-    if (
-      /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
-      /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
-    ) {
+    if (allowedOrigins.has(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
