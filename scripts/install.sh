@@ -279,7 +279,12 @@ install_ollama() {
       if curl -fL --progress-bar https://ollama.com/download/Ollama-darwin.zip -o "$TMPZIP" 2>&1; then
         info "Extracting to /Applications/Ollama.app"
         if unzip -q -o "$TMPZIP" -d /Applications/ 2>&1; then
-          # Remove Gatekeeper quarantine so it runs without prompts
+          # Tell the user we're stripping macOS quarantine — silent xattr
+          # removal is a CYA pattern they should be aware of (otherwise a
+          # security-conscious user might wonder why Gatekeeper doesn't
+          # prompt them about the downloaded app).
+          info "Removing macOS Gatekeeper quarantine on /Applications/Ollama.app"
+          info "(downloaded directly from ollama.com without browser scan; integrity rests on HTTPS to ollama.com)"
           xattr -d com.apple.quarantine /Applications/Ollama.app 2>/dev/null || true
           rm -f "$TMPZIP"
           info "Launching Ollama.app (creates /usr/local/bin/ollama symlink)"
@@ -303,7 +308,19 @@ install_ollama() {
       fi
     fi
   elif [ "$PLATFORM" = "linux" ]; then
+    # SECURITY: curl|sh from a third-party CDN. Ollama doesn't publish a
+    # signed installer or sidecar checksum, so we can't verify the script
+    # before running. Worst-case (CDN compromise, MitM on the user's
+    # network): the attacker runs arbitrary code as the user. This is the
+    # same trust model as `curl|sh` for Homebrew, rustup, etc. — call it
+    # out so a security-conscious user can opt out via ENGRAM_NO_OLLAMA=1.
     info "Running: curl -fsSL https://ollama.com/install.sh | sh"
+    info "(third-party installer; we cannot verify a checksum — trust rests on HTTPS to ollama.com)"
+    info "Skip with ENGRAM_NO_OLLAMA=1 and install Ollama manually if you prefer."
+    if [ "${ENGRAM_NO_OLLAMA:-}" = "1" ]; then
+      warn "Skipped (ENGRAM_NO_OLLAMA=1) — install Ollama manually from https://ollama.com/download"
+      return 0
+    fi
     curl -fsSL https://ollama.com/install.sh | sh
   else
     err "Cannot auto-install Ollama — download from https://ollama.com/download"

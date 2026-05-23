@@ -36,7 +36,17 @@ jobs:
       - name: Upgrade npm to v11+ for Trusted Publishing OIDC
         # Self-upgrade can fail with MODULE_NOT_FOUND on some bundled npm versions —
         # pin a known-good 11.x build and use --force to bypass the bootstrap quirk.
-        run: npm install -g npm@11.5.2 --force
+        # Then verify the resulting npm version matches what we asked for, so a
+        # registry serving a different tarball (compromise / typo) is caught here
+        # rather than silently shipping with the wrong npm.
+        run: |
+          npm install -g npm@11.5.2 --force
+          ACTUAL=$(npm --version)
+          if [ "$ACTUAL" != "11.5.2" ]; then
+            echo "::error::npm upgrade installed $ACTUAL, expected 11.5.2"
+            exit 1
+          fi
+          echo "npm $ACTUAL ✓"
 
       - name: Install dependencies
         run: npm ci

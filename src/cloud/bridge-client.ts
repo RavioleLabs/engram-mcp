@@ -230,15 +230,53 @@ export function startBridgeClient(opts: BridgeClientOptions): BridgeClient {
             return;
           }
 
-          // Tunnel request must have requestId + method + path
+          // Tunnel request must have requestId + method + path with strict shape.
+          // SECURITY: a malicious or compromised cloud relay could send crafted
+          // frames trying to fool the bridge into hitting arbitrary local URLs.
+          // Lock the method to a known HTTP verb allowlist and require path to
+          // start with /api/ — forwardToLocal() also enforces this, but failing
+          // fast at the frame layer keeps logs cleaner and rules out odd inputs
+          // (e.g. method="CONNECT" probing for proxy behavior, path with NUL
+          // bytes, host-header smuggling via path).
+          const ALLOWED_METHODS = new Set([
+            'GET',
+            'POST',
+            'PUT',
+            'PATCH',
+            'DELETE',
+            'HEAD',
+            'OPTIONS',
+          ]);
           if (
             typeof obj.requestId !== 'string' ||
+            obj.requestId.length === 0 ||
+            obj.requestId.length > 128 ||
             typeof obj.method !== 'string' ||
-            typeof obj.path !== 'string'
+            !ALLOWED_METHODS.has(obj.method.toUpperCase()) ||
+            typeof obj.path !== 'string' ||
+            !obj.path.startsWith('/api/') ||
+            obj.path.includes('\0') ||
+            obj.path.length > 2048
           ) {
             log.warn(
-              `Bridge relay: invalid tunnel frame (missing requestId/method/path), ignoring`,
+              `Bridge relay: rejected tunnel frame (bad shape) reqId=${
+                typeof obj.requestId === 'string' ? obj.requestId.slice(0, 20) : '?'
+              } method=${typeof obj.method === 'string' ? obj.method.slice(0, 20) : '?'}`,
             );
+            return;
+          }
+
+          // Optional fields: validate types if present (defense against weird
+          // body types upstream that would crash forwardToLocal).
+          if (
+            obj.headers !== undefined &&
+            (typeof obj.headers !== 'object' || obj.headers === null)
+          ) {
+            log.warn(`Bridge relay: rejected frame, headers not object`);
+            return;
+          }
+          if (obj.body !== undefined && typeof obj.body !== 'string') {
+            log.warn(`Bridge relay: rejected frame, body not string`);
             return;
           }
 
