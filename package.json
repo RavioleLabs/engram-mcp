@@ -50,7 +50,7 @@
     "pdf-parse": "2.4.5",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "react-router-dom": "7.0.0",
+    "react-router-dom": "7.15.1",
     "secrets.js-grempe": "2.0.0",
     "ulid": "2.4.0",
     "ws": "8.18.0",
