@@ -225,3 +225,11 @@ Issues, PRs, and Discord chat welcome.
 ## License
 
 [Elastic License 2.0](LICENSE) — source-available. You may use, fork, modify, and self-host EngramMCP for your own use. You may **not** offer it as a hosted or managed service that provides users access to a substantial set of its features (this is what RavioleLabs offers as the paid cloud — the bridge relay, hosted embeddings, multi-PC sync, and dashboard at engram-mcp.com). For competing service licensing, contact `hello@raviolelabs.com`.
+
+## Trademarks
+
+**Engram™**, **EngramMCP™**, and the Engram logo are trademarks of RavioleLabs. The Elastic License 2.0 grants rights to the software's source code only — it does **not** grant rights to use these trademarks. Forks may not use the Engram name or logo in a way that suggests endorsement by or affiliation with RavioleLabs.
+
+## Security
+
+Found a vulnerability? See [SECURITY.md](SECURITY.md) for responsible-disclosure guidelines. Please do **not** open public issues for security bugs — email `security@raviolelabs.com` instead.

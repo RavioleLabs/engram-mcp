@@ -28,11 +28,12 @@ config.json
 Thumbs.db
 
 # Internal docs — not for public repo
-# Rule: only README.md + SKILL.md at repo root are tracked.
+# Rule: only README.md + SKILL.md + SECURITY.md at repo root are tracked.
 # Everything else (CLAUDE.md, AUDIT.md, docs/, src/**/README.md, ...) stays local-only.
 *.md
 !/README.md
 !/SKILL.md
+!/SECURITY.md
 docs/
 
 # Editor
