@@ -10,6 +10,7 @@ jobs:
   ci:
     name: Lint, Test & Build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +30,26 @@ jobs:
       - name: Format check
         run: npm run format:check
 
-      - name: Test
-        run: npm run test
-
       - name: Build
         run: npm run build
+
+      # Tests are real integration tests (no mocks) — they need a live Ollama
+      # with nomic-embed-text for embeddings. CI installs Ollama natively and
+      # waits for readiness before running vitest.
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          ollama pull nomic-embed-text
+
+      - name: Test
+        run: npm run test
+        env:
+          OLLAMA_BASE_URL: http://127.0.0.1:11434
