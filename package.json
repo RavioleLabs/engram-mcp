@@ -2,7 +2,7 @@
   "name": "@raviolelabs/engram-mcp",
   "version": "0.5.0",
   "mcpName": "io.github.RavioleLabs/engram-mcp",
-  "description": "EngramMCP \u2014 local-first semantic memory layer for AI agents",
+  "description": "EngramMCP — local-first semantic memory layer for AI agents",
   "license": "Elastic-2.0",
   "type": "module",
   "bin": {
@@ -40,7 +40,7 @@
     "better-sqlite3": "12.8.0",
     "cytoscape": "3.33.3",
     "cytoscape-fcose": "2.2.0",
-    "express": "5.0.0",
+    "express": "5.2.1",
     "fast-xml-parser": "5.8.0",
     "googleapis": "144.0.0",
     "libsodium-wrappers": "0.8.4",
@@ -50,10 +50,10 @@
     "pdf-parse": "2.4.5",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "react-router-dom": "7.0.0",
+    "react-router-dom": "7.12.0",
     "secrets.js-grempe": "2.0.0",
     "ulid": "2.4.0",
-    "ws": "8.18.0",
+    "ws": "8.21.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -80,7 +80,7 @@
     "tsx": "4.0.0",
     "typescript": "5.7.3",
     "vite": "5.4.0",
-    "vitest": "2.0.0"
+    "vitest": "2.1.9"
   },
   "engines": {
     "node": ">=22"
