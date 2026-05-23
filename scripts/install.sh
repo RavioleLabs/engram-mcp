@@ -693,18 +693,27 @@ printf '\n'
 printf '%s═══════════════════════════════════════════════%s\n' "$DIM" "$RESET"
 printf '  %s✓ EngramMCP installed in %ss%s\n' "$GREEN" "$TOTAL_TIME" "$RESET"
 printf '%s═══════════════════════════════════════════════%s\n' "$DIM" "$RESET"
-printf '\n'
-printf '  %sBinary:%s    %s\n' "$BOLD" "$RESET" "$INSTALL_DIR/$BINARY_NAME"
-printf '  %sData dir:%s  ~/.engram\n' "$BOLD" "$RESET"
-printf '  %sLogs:%s      ~/.engram/logs/engram.log\n' "$BOLD" "$RESET"
 if [ "$OLLAMA_OK" = "false" ]; then
   printf '\n  %sWARN:%s Ollama not installed — run engram-mcp install:wizard to finish setup\n' "$YELLOW" "$RESET"
+fi
+printf '\n'
+printf '  %s→ Next step:%s\n' "$BOLD" "$RESET"
+printf '\n'
+if [ -n "${INVITE_TOKEN:-}" ] && [ "${PAIR_OK:-0}" = "1" ]; then
+  printf '    %sOpen %shttps://engram-mcp.com/dashboard%s%s\n' "$BOLD" "$CYAN" "$RESET" "$RESET"
+  printf '    %sto watch your memory graph build itself in real time.%s\n' "$DIM" "$RESET"
+else
+  printf '    %sOpen %shttps://engram-mcp.com/dashboard%s%s and click %s"Connect this PC"%s\n' \
+    "$BOLD" "$CYAN" "$RESET" "$RESET" "$BOLD" "$RESET"
+  printf '    %sto link this machine and unlock the live dashboard.%s\n' "$DIM" "$RESET"
 fi
 printf '\n'
 printf '  %sTry it now%s — in your AI agent ask:\n' "$BOLD" "$RESET"
 printf '    %s"remember that I prefer dark mode"%s\n' "$DIM" "$RESET"
 printf '    %s"what do I prefer?"%s\n' "$DIM" "$RESET"
 printf '\n'
-printf '  %sDashboard:%s  https://engram-mcp.com/dashboard\n' "$BOLD" "$RESET"
-printf '  %sDocs:%s       https://engram-mcp.com/docs\n' "$BOLD" "$RESET"
+printf '  %sBinary:%s    %s\n' "$DIM" "$RESET" "$INSTALL_DIR/$BINARY_NAME"
+printf '  %sData dir:%s  ~/.engram\n' "$DIM" "$RESET"
+printf '  %sLogs:%s      ~/.engram/logs/engram.log\n' "$DIM" "$RESET"
+printf '  %sDocs:%s      https://engram-mcp.com/docs\n' "$DIM" "$RESET"
 printf '\n'

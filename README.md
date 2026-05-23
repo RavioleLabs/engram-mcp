@@ -13,15 +13,19 @@ EngramMCP is the memory layer your agents need — ingests from your real source
 
 ## Install
 
+Every install ends with one shared step: **open your dashboard at [engram-mcp.com/dashboard](https://engram-mcp.com/dashboard)** to link your PC and watch your memory graph build itself in real time. Pick whichever install path fits your workflow.
+
 ### One command (recommended)
 
-Get an invite at **[engram-mcp.com](https://engram-mcp.com)** (signup is free + open). You'll receive a personalized install command by email:
+Sign up at **[engram-mcp.com](https://engram-mcp.com)** (signup is free + open). The dashboard gives you a personalized one-line install command:
 
 ```bash
 curl -fsSL https://engram-mcp.com/install/<INVITE_TOKEN> | sh
 ```
 
 This `npm install`s the package, sets up Ollama (auto-installed if missing), pulls `nomic-embed-text`, writes `~/.engram/config.json`, links your account, registers a background service (LaunchAgent on macOS, systemd-user on Linux, NSSM on Windows), updates `~/.claude/mcp.json` + `~/.cursor/mcp.json`, and opens your dashboard at engram-mcp.com — all in under 60 seconds.
+
+**Next step**: the install script ends by pointing you to `https://engram-mcp.com/dashboard`. Open it — your PC appears under **Devices**, and the **Brain** tab visualises memories as you add them.
 
 ### Manual install (no cloud account needed)
 
@@ -32,6 +36,14 @@ npm install -g @raviolelabs/engram-mcp
 # or via npx (no global install):
 npx -y @raviolelabs/engram-mcp --no-http
 ```
+
+**Want to link this PC to the dashboard later?** Sign up at [engram-mcp.com](https://engram-mcp.com), click *Connect this PC* on the dashboard, copy the token shown, then on your machine:
+
+```bash
+engram-mcp pair --token <TOKEN_FROM_DASHBOARD>
+```
+
+That re-pairs an already-installed PC without re-running the full installer — useful after revoking a device, switching accounts, or pairing a second machine.
 
 Then add to your agent's MCP config (`~/.claude/mcp.json` for Claude Code, similar for Cursor):
 
