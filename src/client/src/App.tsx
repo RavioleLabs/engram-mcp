@@ -38,17 +38,35 @@ export default function App() {
     <div className="min-h-screen flex">
       <aside className="w-64 border-r border-zinc-800 p-4 space-y-2">
         <div className="flex items-center justify-between mb-4">
-          <Link to="/" className="block text-lg font-semibold">EngramMCP</Link>
+          <Link to="/" className="block text-lg font-semibold">
+            EngramMCP
+          </Link>
           <SyncIndicator />
         </div>
-        <NavLink to="/" end className={navClass}>Home</NavLink>
-        <NavLink to="/browse" className={navClass}>Browse</NavLink>
-        <NavLink to="/search" className={navClass}>Search</NavLink>
-        <NavLink to="/daily" className={navClass}>Daily Notes</NavLink>
-        <NavLink to="/sources" className={navClass}>Sources</NavLink>
-        <NavLink to="/types" className={navClass}>Memory Types</NavLink>
-        <NavLink to="/graph" className={navClass}>Graph</NavLink>
-        <NavLink to="/settings" className={navClass}>Settings</NavLink>
+        <NavLink to="/" end className={navClass}>
+          Home
+        </NavLink>
+        <NavLink to="/browse" className={navClass}>
+          Browse
+        </NavLink>
+        <NavLink to="/search" className={navClass}>
+          Search
+        </NavLink>
+        <NavLink to="/daily" className={navClass}>
+          Daily Notes
+        </NavLink>
+        <NavLink to="/sources" className={navClass}>
+          Sources
+        </NavLink>
+        <NavLink to="/types" className={navClass}>
+          Memory Types
+        </NavLink>
+        <NavLink to="/graph" className={navClass}>
+          Graph
+        </NavLink>
+        <NavLink to="/settings" className={navClass}>
+          Settings
+        </NavLink>
         <button
           className="mt-8 w-full text-left text-xs text-zinc-500 hover:text-zinc-200"
           onClick={() => setPaletteOpen(true)}
@@ -77,5 +95,7 @@ export default function App() {
 }
 
 function navClass({ isActive }: { isActive: boolean }): string {
-  return `block px-3 py-2 rounded ${isActive ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900'}`;
+  return `block px-3 py-2 rounded ${
+    isActive ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900'
+  }`;
 }

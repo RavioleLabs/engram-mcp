@@ -49,7 +49,10 @@ export function memoriesApi(store: MemoryStore): Router {
       } else {
         const types = store.listTypes();
         const all = await Promise.all(types.map((t) => store.search(t, q, limit).catch(() => [])));
-        hits = all.flat().sort((a, b) => b.score - a.score).slice(0, limit);
+        hits = all
+          .flat()
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit);
       }
       res.json(
         hits.map((h) => ({

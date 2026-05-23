@@ -55,7 +55,7 @@ export async function embed(text: string, config: EmbeddingsConfig): Promise<Flo
           _sessionFallbackActive = true;
           log.info(
             `Session fallback active — all embeddings this session will use local Ollama. ` +
-            `Hosted quota resets: ${e.exhaustedUntil ?? 'next month'}.`,
+              `Hosted quota resets: ${e.exhaustedUntil ?? 'next month'}.`,
           );
           return embedOllama(text, config);
         }

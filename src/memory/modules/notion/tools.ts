@@ -35,7 +35,7 @@ export function buildNotionTools(store: MemoryStore, config: EngramConfig): MCPT
     },
     {
       name: 'list_notion_pages',
-      description: 'Search the user\'s Notion workspace for pages.',
+      description: "Search the user's Notion workspace for pages.",
       inputSchema: {
         type: 'object',
         properties: {
@@ -45,10 +45,7 @@ export function buildNotionTools(store: MemoryStore, config: EngramConfig): MCPT
       },
       handler: async (args) => {
         if (!isNotionConnected()) return { error: 'Notion not connected' };
-        return await searchPages(
-          (args.query as string) ?? '',
-          (args.limit as number) ?? 25,
-        );
+        return await searchPages((args.query as string) ?? '', (args.limit as number) ?? 25);
       },
     },
     {

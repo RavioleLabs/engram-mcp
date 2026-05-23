@@ -22,7 +22,9 @@ export function SyncIndicator() {
   return (
     <div className="flex items-center gap-1 text-xs text-gray-500">
       <span
-        className={`h-2 w-2 rounded-full ${data.pending_ops > 0 ? 'bg-yellow-400' : 'bg-green-400'}`}
+        className={`h-2 w-2 rounded-full ${
+          data.pending_ops > 0 ? 'bg-yellow-400' : 'bg-green-400'
+        }`}
         title={`${data.pending_ops} ops pending sync`}
       />
       <span>{data.pending_ops > 0 ? `${data.pending_ops} pending` : 'synced'}</span>

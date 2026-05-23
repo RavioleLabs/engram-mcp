@@ -14,7 +14,7 @@ export interface MemoryModuleContext {
 }
 
 export interface MemoryModule {
-  id: string;                          // 'notes', 'conversations', ...
+  id: string; // 'notes', 'conversations', ...
   displayName: string;
   isCustom: boolean;
 

@@ -21,10 +21,7 @@ describe('MCP E2E (real subprocess) — full 24-tool public surface', () => {
       cwd: process.cwd(),
     });
 
-    client = new Client(
-      { name: 'engram-e2e-test', version: '0.0.0' },
-      { capabilities: {} },
-    );
+    client = new Client({ name: 'engram-e2e-test', version: '0.0.0' }, { capabilities: {} });
 
     await client.connect(transport);
   }, 30_000);

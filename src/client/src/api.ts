@@ -44,25 +44,49 @@ export const api = {
     u.searchParams.set('q', q);
     if (type) u.searchParams.set('type', type);
     u.searchParams.set('limit', String(limit));
-    return jget<Array<{ id: string; type: string; score: number; snippet: string; title?: string }>>(u.pathname + u.search);
+    return jget<
+      Array<{ id: string; type: string; score: number; snippet: string; title?: string }>
+    >(u.pathname + u.search);
   },
   getMemory: (id: string) => jget<unknown>(`/api/memories/${id}`),
   deleteMemory: (id: string) => jdel<{ deleted: string }>(`/api/memories/${id}`),
   listSources: (module_id?: string) =>
-    jget<Array<{ id: string; module_id: string; external_id: string; display_name: string; last_synced_at: number | null; enabled: boolean }>>(
-      `/api/sources${module_id ? `?module_id=${encodeURIComponent(module_id)}` : ''}`,
-    ),
+    jget<
+      Array<{
+        id: string;
+        module_id: string;
+        external_id: string;
+        display_name: string;
+        last_synced_at: number | null;
+        enabled: boolean;
+      }>
+    >(`/api/sources${module_id ? `?module_id=${encodeURIComponent(module_id)}` : ''}`),
   removeSource: (id: string) => jdel<{ removed: string }>(`/api/sources/${id}`),
   listTypes: () =>
     jget<Array<{ id: string; display_name: string; is_custom: boolean }>>(`/api/types`),
   listViews: () =>
-    jget<Array<{ id: string; name: string; description: string | null; definition: object; pinned: boolean }>>(`/api/views`),
-  createView: (body: { name: string; description?: string; definition: object; pinned?: boolean }) =>
-    jpost<{ id: string }>(`/api/views`, body),
+    jget<
+      Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        definition: object;
+        pinned: boolean;
+      }>
+    >(`/api/views`),
+  createView: (body: {
+    name: string;
+    description?: string;
+    definition: object;
+    pinned?: boolean;
+  }) => jpost<{ id: string }>(`/api/views`, body),
   deleteView: (id: string) => jdel<{ deleted: string }>(`/api/views/${id}`),
-  dailyBuckets: (days = 30) => jget<Array<{ day: string; type: string; count: number }>>(`/api/daily/buckets?days=${days}`),
+  dailyBuckets: (days = 30) =>
+    jget<Array<{ day: string; type: string; count: number }>>(`/api/daily/buckets?days=${days}`),
   dailyItems: (day: string, type?: string) =>
-    jget<Array<MemoryRow>>(`/api/daily/items/${day}${type ? `?type=${encodeURIComponent(type)}` : ''}`),
+    jget<Array<MemoryRow>>(
+      `/api/daily/items/${day}${type ? `?type=${encodeURIComponent(type)}` : ''}`,
+    ),
   getSettings: () => jget<Record<string, unknown>>(`/api/settings`),
   setSetting: (key: string, value: unknown) =>
     fetch(`/api/settings/${key}`, {
@@ -70,8 +94,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(value),
     }).then((r) => r.json()),
-  reindex: () =>
-    fetch('/api/reindex', { method: 'POST' }).then((r) => r.json()),
+  reindex: () => fetch('/api/reindex', { method: 'POST' }).then((r) => r.json()),
   graph: (params?: { type?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.type) qs.set('type', params.type);

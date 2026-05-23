@@ -41,9 +41,11 @@ describe('ModuleRegistry', () => {
   it('collects tools from all modules', () => {
     moduleRegistry.register(fakeModule('a'));
     moduleRegistry.register(fakeModule('b'));
-    expect(moduleRegistry.collectTools().map((t) => t.name).sort()).toEqual([
-      'search_a',
-      'search_b',
-    ]);
+    expect(
+      moduleRegistry
+        .collectTools()
+        .map((t) => t.name)
+        .sort(),
+    ).toEqual(['search_a', 'search_b']);
   });
 });

@@ -15,10 +15,10 @@ export function buildConversationsTools(
       inputSchema: {
         type: 'object',
         properties: {
-          user_message: { type: 'string', description: 'The user\'s message verbatim' },
+          user_message: { type: 'string', description: "The user's message verbatim" },
           assistant_message: {
             type: 'string',
-            description: 'The assistant\'s reply verbatim',
+            description: "The assistant's reply verbatim",
           },
           agent: {
             type: 'string',
@@ -26,7 +26,8 @@ export function buildConversationsTools(
           },
           title: {
             type: 'string',
-            description: 'Short title summarizing the exchange (3-7 words). Required for good retrieval.',
+            description:
+              'Short title summarizing the exchange (3-7 words). Required for good retrieval.',
           },
           tags: {
             type: 'array',

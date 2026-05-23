@@ -35,13 +35,29 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-start justify-center pt-32 z-50" onClick={onClose}>
-      <div className="w-2/3 max-w-2xl bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-start justify-center pt-32 z-50"
+      onClick={onClose}
+    >
+      <div
+        className="w-2/3 max-w-2xl bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex gap-2 mb-3">
-          <button className={`px-3 py-1 rounded text-sm ${mode === 'capture' ? 'bg-blue-500 text-white' : 'bg-zinc-800'}`} onClick={() => setMode('capture')}>
+          <button
+            className={`px-3 py-1 rounded text-sm ${
+              mode === 'capture' ? 'bg-blue-500 text-white' : 'bg-zinc-800'
+            }`}
+            onClick={() => setMode('capture')}
+          >
             Quick capture (Note)
           </button>
-          <button className={`px-3 py-1 rounded text-sm ${mode === 'search' ? 'bg-blue-500 text-white' : 'bg-zinc-800'}`} onClick={() => setMode('search')}>
+          <button
+            className={`px-3 py-1 rounded text-sm ${
+              mode === 'search' ? 'bg-blue-500 text-white' : 'bg-zinc-800'
+            }`}
+            onClick={() => setMode('search')}
+          >
             Search
           </button>
         </div>
@@ -60,7 +76,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           <button className="text-sm text-zinc-400" onClick={onClose}>
             Cancel (Esc)
           </button>
-          <button className="px-4 py-2 bg-blue-500 text-white rounded text-sm disabled:opacity-50" disabled={busy || !text.trim()} onClick={() => void submit()}>
+          <button
+            className="px-4 py-2 bg-blue-500 text-white rounded text-sm disabled:opacity-50"
+            disabled={busy || !text.trim()}
+            onClick={() => void submit()}
+          >
             {mode === 'capture' ? 'Save (⌘↵)' : 'Search'}
           </button>
         </div>

@@ -15,7 +15,7 @@ import type { EmbeddingsConfig } from '../config/schema.js';
 const log = createLogger('vector');
 
 export interface VectorChunk {
-  id: string;            // ULID — matches MemoryItem.id
+  id: string; // ULID — matches MemoryItem.id
   source_id: string;
   chunk_index: number;
   content: string;
@@ -143,10 +143,7 @@ export async function semanticSearch(
   const queryVec = await embed(queryText, embeddingsConfig);
   const table = await getTable(memoryType);
 
-  const results = await table
-    .search(Array.from(queryVec))
-    .limit(limit)
-    .toArray();
+  const results = await table.search(Array.from(queryVec)).limit(limit).toArray();
 
   return results.map((r: Record<string, unknown>) => ({
     chunk: {

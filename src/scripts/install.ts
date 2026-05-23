@@ -77,9 +77,7 @@ async function main() {
   console.log('✓ Ollama is running');
 
   // 2. Pull models
-  const wantPull = (
-    await rl.question('? Pull nomic-embed-text embedding model (~270MB)? [Y/n] ')
-  )
+  const wantPull = (await rl.question('? Pull nomic-embed-text embedding model (~270MB)? [Y/n] '))
     .trim()
     .toLowerCase();
   if (wantPull === '' || wantPull === 'y' || wantPull === 'yes') {
@@ -108,9 +106,7 @@ async function main() {
   console.log('\nAudio transcription (Whisper) provider:');
   console.log('  [1] Local whisper.cpp (free, requires ~500MB model download on first use)');
   console.log('  [2] Engram cloud whisper (Pro $9/mo, includes 5h/month, no local install)');
-  const whisperChoice = (
-    await rl.question('? Choose whisper provider [1]: ')
-  ).trim();
+  const whisperChoice = (await rl.question('? Choose whisper provider [1]: ')).trim();
 
   let whisperProvider: 'local' | 'engram-hosted' = 'local';
   if (whisperChoice === '2') {
@@ -150,7 +146,11 @@ function printMcpSnippet(): void {
   console.log('\n┄ Next: add EngramMCP to your agent runtime ─────────────────────');
   console.log('\nClaude Code — add to ~/.claude/mcp.json:\n');
   console.log(
-    JSON.stringify({ mcpServers: { engram: { command: 'engram-mcp', args: ['--no-http'] } } }, null, 2),
+    JSON.stringify(
+      { mcpServers: { engram: { command: 'engram-mcp', args: ['--no-http'] } } },
+      null,
+      2,
+    ),
   );
   console.log('\nCursor — add to ~/.cursor/mcp.json (same shape).');
   console.log('\n  --no-http is recommended: runs the MCP server only, no local web UI.');
@@ -162,24 +162,19 @@ function printMcpSnippet(): void {
   console.log('Run reindex (after model swap): npm run reindex');
 }
 
-async function setupEngramHostedProvider(
-  rl: ReturnType<typeof createInterface>,
-): Promise<void> {
+async function setupEngramHostedProvider(rl: ReturnType<typeof createInterface>): Promise<void> {
   console.log('\nEngram hosted embeddings + whisper — Pro tier ($9/mo).');
   console.log('Includes 10M embedding tokens + 5h whisper audio per month.');
-  console.log(
-    'Get your API key at https://engram-mcp.com/settings.',
-  );
+  console.log('Get your API key at https://engram-mcp.com/settings.');
   const apiKey = (
-    await rl.question(
-      '? Paste your Engram API key (or leave blank to use placeholder): ',
-    )
+    await rl.question('? Paste your Engram API key (or leave blank to use placeholder): ')
   ).trim();
 
-  const wantHostedWhisper = (
-    await rl.question('? Also use Engram-hosted whisper? [Y/n] ')
-  ).trim().toLowerCase();
-  const useHostedWhisper = wantHostedWhisper === '' || wantHostedWhisper === 'y' || wantHostedWhisper === 'yes';
+  const wantHostedWhisper = (await rl.question('? Also use Engram-hosted whisper? [Y/n] '))
+    .trim()
+    .toLowerCase();
+  const useHostedWhisper =
+    wantHostedWhisper === '' || wantHostedWhisper === 'y' || wantHostedWhisper === 'yes';
 
   const cfg = {
     ...defaultConfig,

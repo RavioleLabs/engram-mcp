@@ -11,7 +11,7 @@ import { createLogger } from '../../../logger.js';
 const log = createLogger('team:keystore');
 
 export interface X25519Keypair {
-  publicKey: Uint8Array;  // 32 bytes
+  publicKey: Uint8Array; // 32 bytes
   privateKey: Uint8Array; // 32 bytes
 }
 
@@ -24,7 +24,10 @@ async function keysDir(dataDir: string): Promise<string> {
 }
 
 async function fileExists(p: string): Promise<boolean> {
-  return fs.access(p).then(() => true).catch(() => false);
+  return fs
+    .access(p)
+    .then(() => true)
+    .catch(() => false);
 }
 
 // ── X25519 keypair ────────────────────────────────────────────────────────────
@@ -113,11 +116,7 @@ export async function unwrapAndStoreWorkspaceKey(
 ): Promise<Uint8Array> {
   await sodium.ready;
   const wrapped = sodium.from_hex(wrappedHex);
-  const teamKey = sodium.crypto_box_seal_open(
-    wrapped,
-    keypair.publicKey,
-    keypair.privateKey,
-  );
+  const teamKey = sodium.crypto_box_seal_open(wrapped, keypair.publicKey, keypair.privateKey);
 
   const dir = path.join(await keysDir(dataDir), 'workspaces');
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
@@ -154,10 +153,7 @@ export async function wrapKeyForRecipient(
 /**
  * Delete a workspace key from local disk (after leaving the workspace).
  */
-export async function deleteWorkspaceKey(
-  dataDir: string,
-  workspaceId: string,
-): Promise<void> {
+export async function deleteWorkspaceKey(dataDir: string, workspaceId: string): Promise<void> {
   const p = path.join(await keysDir(dataDir), 'workspaces', `${workspaceId}.key`);
   await fs.unlink(p).catch(() => {});
   log.info(`Deleted workspace key for ${workspaceId}`);

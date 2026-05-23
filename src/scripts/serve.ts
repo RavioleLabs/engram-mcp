@@ -26,8 +26,8 @@ async function main() {
     });
     log.info(
       `Local dashboard running at http://localhost:${config.mcp.httpPort} (dev tool — opt-in).` +
-      ' The official dashboard is https://engram-mcp.com — sign up to access from anywhere.' +
-      ' Use --no-http to start without the local web UI.',
+        ' The official dashboard is https://engram-mcp.com — sign up to access from anywhere.' +
+        ' Use --no-http to start without the local web UI.',
     );
   }
 

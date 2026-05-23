@@ -28,13 +28,15 @@ const CreateMemorySchema = z.object({
   properties: z.record(z.unknown()).optional(),
 });
 
-const PatchMemorySchema = z.object({
-  title: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  sentiment: z.enum(['positive', 'neutral', 'negative']).optional(),
-  action_required: z.boolean().optional(),
-  custom: z.record(z.unknown()).optional(),
-}).strict();
+const PatchMemorySchema = z
+  .object({
+    title: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    sentiment: z.enum(['positive', 'neutral', 'negative']).optional(),
+    action_required: z.boolean().optional(),
+    custom: z.record(z.unknown()).optional(),
+  })
+  .strict();
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -128,8 +130,8 @@ export function memoriesApi(store: MemoryStore): Router {
           disabled_reason: typeDisabled
             ? ('type' as const)
             : memDisabled
-              ? ('memory' as const)
-              : null,
+            ? ('memory' as const)
+            : null,
         };
       })
       .filter((m) => includeDisabled || !m.disabled);
@@ -155,7 +157,10 @@ export function memoriesApi(store: MemoryStore): Router {
       } else {
         const types = store.listTypes();
         const all = await Promise.all(types.map((t) => store.search(t, q, limit).catch(() => [])));
-        hits = all.flat().sort((a, b) => b.score - a.score).slice(0, limit);
+        hits = all
+          .flat()
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit);
       }
       res.json(
         hits.map((h) => ({
@@ -183,7 +188,14 @@ export function memoriesApi(store: MemoryStore): Router {
     const { type, title, tags, content, properties: extraProps } = parsed.data;
     const config = loadConfig();
     const embeddingModel = `${config.embeddings.provider}/${config.embeddings.model}`;
-    const item = buildMemoryItem(type, content, title, tags, extraProps as Record<string, unknown>, embeddingModel);
+    const item = buildMemoryItem(
+      type,
+      content,
+      title,
+      tags,
+      extraProps as Record<string, unknown>,
+      embeddingModel,
+    );
     try {
       await store.insert(item);
       res.status(201).json(item);
@@ -241,7 +253,14 @@ export function memoriesApi(store: MemoryStore): Router {
       // ---- PDF ----
       if (ext === '.pdf') {
         const content = `[uploaded PDF: ${originalname}] — full text extraction pending`;
-        const item = buildMemoryItem('notes', content, originalname, ['pdf'], { source_url: `file://${originalname}` }, embeddingModel);
+        const item = buildMemoryItem(
+          'notes',
+          content,
+          originalname,
+          ['pdf'],
+          { source_url: `file://${originalname}` },
+          embeddingModel,
+        );
         await store.insert(item);
         res.status(201).json({ id: item.id, type: 'notes', filename: originalname });
         return;
@@ -257,14 +276,26 @@ export function memoriesApi(store: MemoryStore): Router {
         const transcript = await transcribeAudio(stablePath, config.whisper);
         const item = buildAudioItem({ audioPath: stablePath, transcript, embeddingModel });
         await store.insert(item);
-        res.status(201).json({ id: item.id, type: 'audio', filename: originalname, duration: transcript.duration });
+        res.status(201).json({
+          id: item.id,
+          type: 'audio',
+          filename: originalname,
+          duration: transcript.duration,
+        });
         return;
       }
 
       // ---- images ----
       if (['.png', '.jpg', '.jpeg'].includes(ext)) {
         const content = `[uploaded image: ${originalname}]`;
-        const item = buildMemoryItem('images', content, originalname, ['image'], { source_url: `file://${originalname}`, mime_type: mimetype }, embeddingModel);
+        const item = buildMemoryItem(
+          'images',
+          content,
+          originalname,
+          ['image'],
+          { source_url: `file://${originalname}`, mime_type: mimetype },
+          embeddingModel,
+        );
         await store.insert(item);
         res.status(201).json({ id: item.id, type: 'images', filename: originalname });
         return;
@@ -275,7 +306,11 @@ export function memoriesApi(store: MemoryStore): Router {
       res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
     } finally {
       // Clean up temp file if still present
-      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+      try {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      } catch {
+        /* ignore */
+      }
     }
   });
 

@@ -32,9 +32,9 @@ describe('db migrations', () => {
   });
 
   it('records schema version up to latest', () => {
-    const row = getDb()
-      .prepare('SELECT MAX(version) as v FROM schema_version')
-      .get() as { v: number };
+    const row = getDb().prepare('SELECT MAX(version) as v FROM schema_version').get() as {
+      v: number;
+    };
     expect(row.v).toBe(7); // v7 adds poll_count to ingest_jobs for exponential backoff hints
   });
 

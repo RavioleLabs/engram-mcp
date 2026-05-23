@@ -135,17 +135,13 @@ describe('MemoryStore with property extraction', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it(
-    'fills missing properties (title, tags) automatically',
-    async () => {
-      const item = buildItem({
-        content: 'Met with Alice about the new Polymarket integration; deadline April 15.',
-      });
-      await store.insert(item);
-      const fetched = store.getById(item.id);
-      expect(fetched?.properties.title).toBeTruthy();
-      expect(fetched?.properties.tags?.length ?? 0).toBeGreaterThan(0);
-    },
-    60_000,
-  );
+  it('fills missing properties (title, tags) automatically', async () => {
+    const item = buildItem({
+      content: 'Met with Alice about the new Polymarket integration; deadline April 15.',
+    });
+    await store.insert(item);
+    const fetched = store.getById(item.id);
+    expect(fetched?.properties.title).toBeTruthy();
+    expect(fetched?.properties.tags?.length ?? 0).toBeGreaterThan(0);
+  }, 60_000);
 });

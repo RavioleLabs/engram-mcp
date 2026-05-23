@@ -29,21 +29,18 @@ export async function broadcastWorkspaceOp(
   msg: WorkspaceSyncMessage,
 ): Promise<void> {
   const cloudBaseUrl =
-    (config as unknown as Record<string, unknown>).cloudBaseUrl as string | undefined
-    ?? 'https://api.engram-mcp.com';
+    ((config as unknown as Record<string, unknown>).cloudBaseUrl as string | undefined) ??
+    'https://api.engram-mcp.com';
 
   try {
-    const res = await fetch(
-      `${cloudBaseUrl}/api/workspaces/${msg.workspace_id}/broadcast`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Cookie: `engram_session=${jwt}`,
-        },
-        body: JSON.stringify(msg),
+    const res = await fetch(`${cloudBaseUrl}/api/workspaces/${msg.workspace_id}/broadcast`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `engram_session=${jwt}`,
       },
-    );
+      body: JSON.stringify(msg),
+    });
     if (!res.ok) {
       log.warn('Workspace broadcast failed', {
         status: res.status,
@@ -100,8 +97,9 @@ async function refreshWorkspaceKey(
 ): Promise<void> {
   try {
     // Import keystore dynamically to avoid circular imports
-    const { getOrCreateX25519Keypair, unwrapAndStoreWorkspaceKey } =
-      await import('../memory/modules/team/keystore.js');
+    const { getOrCreateX25519Keypair, unwrapAndStoreWorkspaceKey } = await import(
+      '../memory/modules/team/keystore.js'
+    );
 
     const keypair = await getOrCreateX25519Keypair(dataDir, masterKey);
 

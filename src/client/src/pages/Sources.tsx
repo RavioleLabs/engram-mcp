@@ -110,7 +110,9 @@ export default function Sources() {
             className="flex-1 text-xs bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-zinc-300 placeholder-zinc-600"
           />
           <button
-            onClick={() => { void handleImportPlaylist(); }}
+            onClick={() => {
+              void handleImportPlaylist();
+            }}
             disabled={!playlistUrl || importing}
             className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white rounded"
           >

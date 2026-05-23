@@ -50,8 +50,15 @@ export function buildYoutubeTools(store: MemoryStore, config: EngramConfig): MCP
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Natural language query to search YouTube transcripts.' },
-          limit: { type: 'number', default: 10, description: 'Maximum number of results to return.' },
+          query: {
+            type: 'string',
+            description: 'Natural language query to search YouTube transcripts.',
+          },
+          limit: {
+            type: 'number',
+            default: 10,
+            description: 'Maximum number of results to return.',
+          },
         },
         required: ['query'],
       },
@@ -105,14 +112,12 @@ export function buildYoutubeTools(store: MemoryStore, config: EngramConfig): MCP
         const { resolveChannelId } = await import('./watcher.js');
 
         const channelId = await resolveChannelId(rawChannelId);
-        const existing = sourceRegistry.listEnabled('youtube').find(
-          (s) => s.external_id === channelId,
-        );
+        const existing = sourceRegistry
+          .listEnabled('youtube')
+          .find((s) => s.external_id === channelId);
         if (existing) {
           return {
-            content: [
-              { type: 'text', text: `Channel ${channelId} is already being watched.` },
-            ],
+            content: [{ type: 'text', text: `Channel ${channelId} is already being watched.` }],
           };
         }
 
@@ -127,7 +132,9 @@ export function buildYoutubeTools(store: MemoryStore, config: EngramConfig): MCP
           content: [
             {
               type: 'text',
-              text: `Now watching channel ${rawChannelName ?? channelId} (${channelId}). New videos will be ingested automatically.`,
+              text: `Now watching channel ${
+                rawChannelName ?? channelId
+              } (${channelId}). New videos will be ingested automatically.`,
             },
           ],
         };
@@ -153,9 +160,7 @@ export function buildYoutubeTools(store: MemoryStore, config: EngramConfig): MCP
         if (found) {
           sourceRegistry.remove(found.id);
           return {
-            content: [
-              { type: 'text', text: `Stopped watching channel ${channelId}.` },
-            ],
+            content: [{ type: 'text', text: `Stopped watching channel ${channelId}.` }],
           };
         }
         return {

@@ -30,4 +30,3 @@ export function buildNoteItem(input: IngestInput, embeddingModel: string): Memor
     embedding_model: embeddingModel,
   };
 }
-

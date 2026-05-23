@@ -99,7 +99,7 @@ export async function fetchTranscript(
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17 Safari/605.1.15',
-      'Referer': 'https://www.youtube.com/',
+      Referer: 'https://www.youtube.com/',
     },
   });
   if (!xmlResp.ok) throw new Error(`Timedtext fetch failed: ${xmlResp.status}`);
@@ -185,7 +185,9 @@ async function fetchViaYtdlp(
       try {
         const fs = await import('fs');
         // Find the produced VTT file
-        const candidates = fs.readdirSync('/tmp').filter((n) => n.startsWith(`engram-yt-${videoId}`));
+        const candidates = fs
+          .readdirSync('/tmp')
+          .filter((n) => n.startsWith(`engram-yt-${videoId}`));
         const vttFile = candidates.find((n) => n.endsWith('.vtt'));
         if (!vttFile) throw new Error('yt-dlp produced no .vtt');
         const vtt = fs.readFileSync(`/tmp/${vttFile}`, 'utf-8');
@@ -210,10 +212,8 @@ function parseVtt(vtt: string): YoutubeTranscriptSegment[] {
   const re = /(\d+):(\d{2}):(\d{2})[.,](\d+) --> (\d+):(\d{2}):(\d{2})[.,](\d+)\n([^\n]+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(vtt)) !== null) {
-    const start =
-      Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
-    const end =
-      Number(m[5]) * 3600 + Number(m[6]) * 60 + Number(m[7]) + Number(m[8]) / 1000;
+    const start = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+    const end = Number(m[5]) * 3600 + Number(m[6]) * 60 + Number(m[7]) + Number(m[8]) / 1000;
     segments.push({ start, duration: end - start, text: m[9].trim() });
   }
   return segments;

@@ -68,12 +68,14 @@ export function buildAdminTools(
           query: args.query as string | undefined,
           pageSize: (args.limit as number) ?? 25,
         });
-        return files.map((f: { id: string; name: string; mimeType: string; modifiedTime: string }) => ({
-          id: f.id,
-          name: f.name,
-          mimeType: f.mimeType,
-          modifiedTime: f.modifiedTime,
-        }));
+        return files.map(
+          (f: { id: string; name: string; mimeType: string; modifiedTime: string }) => ({
+            id: f.id,
+            name: f.name,
+            mimeType: f.mimeType,
+            modifiedTime: f.modifiedTime,
+          }),
+        );
       },
     },
 
@@ -87,14 +89,19 @@ export function buildAdminTools(
       ].join(' '),
       inputSchema: { type: 'object', properties: {} },
       handler: async () => {
-        const { startNotionOAuthFlow, isNotionConnected, getNotionWorkspace } = await import('../modules/notion/oauth.js');
+        const { startNotionOAuthFlow, isNotionConnected, getNotionWorkspace } = await import(
+          '../modules/notion/oauth.js'
+        );
         if (isNotionConnected()) {
           const ws = getNotionWorkspace();
           return { already_connected: true, workspace: ws?.name };
         }
         const flow = await startNotionOAuthFlow(config);
         const result = await Promise.race([
-          flow.waitForCallback.then((t: { workspace_name: string }) => ({ connected: true, workspace: t.workspace_name })),
+          flow.waitForCallback.then((t: { workspace_name: string }) => ({
+            connected: true,
+            workspace: t.workspace_name,
+          })),
           new Promise<{ timeout: boolean }>((resolve) =>
             setTimeout(() => resolve({ timeout: true }), 300_000),
           ),
@@ -121,10 +128,7 @@ export function buildAdminTools(
         const { searchPages } = await import('../modules/notion/connector.js');
         const { isNotionConnected } = await import('../modules/notion/oauth.js');
         if (!isNotionConnected()) return { error: 'Notion not connected' };
-        return await searchPages(
-          (args.query as string) ?? '',
-          (args.limit as number) ?? 25,
-        );
+        return await searchPages((args.query as string) ?? '', (args.limit as number) ?? 25);
       },
     },
 

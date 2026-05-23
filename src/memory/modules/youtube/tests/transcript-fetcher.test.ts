@@ -17,14 +17,10 @@ describe('youtube transcript fetcher', () => {
     expect(extractVideoId('iG9CE55wbtY')).toBe('iG9CE55wbtY');
   });
 
-  it(
-    'fetches an English transcript for a known video',
-    async () => {
-      const result = await fetchTranscript(TEST_URL, config);
-      expect(result.video_id).toBe('iG9CE55wbtY');
-      expect(result.segments.length).toBeGreaterThan(50);
-      expect(result.full_text.toLowerCase()).toContain('creativity');
-    },
-    60_000,
-  );
+  it('fetches an English transcript for a known video', async () => {
+    const result = await fetchTranscript(TEST_URL, config);
+    expect(result.video_id).toBe('iG9CE55wbtY');
+    expect(result.segments.length).toBeGreaterThan(50);
+    expect(result.full_text.toLowerCase()).toContain('creativity');
+  }, 60_000);
 });

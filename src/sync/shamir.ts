@@ -81,11 +81,7 @@ export interface ShamirShare {
  * @param threshold  minimum shares to reconstruct (e.g. 3)
  * @param total      total number of shares (e.g. 5)
  */
-export function shamirSplit(
-  kwk: Buffer,
-  threshold: number,
-  total: number,
-): ShamirShare[] {
+export function shamirSplit(kwk: Buffer, threshold: number, total: number): ShamirShare[] {
   if (kwk.length !== 32) throw new Error('KWK must be 32 bytes');
   if (threshold < 2) throw new Error('threshold must be >= 2');
   if (total < threshold) throw new Error('total must be >= threshold');
@@ -118,7 +114,9 @@ export function shamirCombine(shares: ShamirShare[]): Buffer {
   if (kwk.length === 32) {
     log.info(`Shamir combine: reconstructed KWK from ${shares.length} shares`);
   } else {
-    log.warn(`Shamir combine: reconstructed key has unexpected length ${kwk.length} — wrong key or insufficient shares`);
+    log.warn(
+      `Shamir combine: reconstructed key has unexpected length ${kwk.length} — wrong key or insufficient shares`,
+    );
   }
   return kwk;
 }

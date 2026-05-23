@@ -31,7 +31,10 @@ const BLOCKED_HOSTS = new Set([
 ]);
 
 export class UriValidationError extends Error {
-  constructor(message: string, public readonly code: string) {
+  constructor(
+    message: string,
+    public readonly code: string,
+  ) {
     super(message);
     this.name = 'UriValidationError';
   }
@@ -128,10 +131,7 @@ export async function validateHttpUri(httpUri: string): Promise<URL> {
   const hostname = url.hostname.toLowerCase();
 
   if (BLOCKED_HOSTS.has(hostname)) {
-    throw new UriValidationError(
-      `Host blocked (internal target): ${hostname}`,
-      'BLOCKED_HOST',
-    );
+    throw new UriValidationError(`Host blocked (internal target): ${hostname}`, 'BLOCKED_HOST');
   }
 
   // If hostname is a literal IP, check it directly
@@ -177,10 +177,7 @@ export async function validateHttpUri(httpUri: string): Promise<URL> {
   }
 
   if (addresses.length === 0) {
-    throw new UriValidationError(
-      `Hostname ${hostname} did not resolve to any IP`,
-      'NO_IP',
-    );
+    throw new UriValidationError(`Hostname ${hostname} did not resolve to any IP`, 'NO_IP');
   }
 
   for (const ip of addresses) {

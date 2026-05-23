@@ -92,22 +92,18 @@ export function completeJob(jobId: string, memoryId: string): void {
 
 export function failJob(jobId: string, error: string): void {
   getDb()
-    .prepare(
-      `UPDATE ingest_jobs SET status = 'failed', error = ?, completed_at = ? WHERE id = ?`,
-    )
+    .prepare(`UPDATE ingest_jobs SET status = 'failed', error = ?, completed_at = ? WHERE id = ?`)
     .run(error, Date.now(), jobId);
   log.warn(`Job ${jobId} failed: ${error}`);
 }
 
 export function getJob(jobId: string): IngestJob | undefined {
   // Increment poll_count and return updated row atomically
-  getDb()
-    .prepare(`UPDATE ingest_jobs SET poll_count = poll_count + 1 WHERE id = ?`)
-    .run(jobId);
+  getDb().prepare(`UPDATE ingest_jobs SET poll_count = poll_count + 1 WHERE id = ?`).run(jobId);
 
-  const row = getDb()
-    .prepare(`SELECT * FROM ingest_jobs WHERE id = ?`)
-    .get(jobId) as Record<string, unknown> | undefined;
+  const row = getDb().prepare(`SELECT * FROM ingest_jobs WHERE id = ?`).get(jobId) as
+    | Record<string, unknown>
+    | undefined;
   if (!row) return undefined;
   return {
     id: row.id as string,
@@ -125,7 +121,10 @@ export function getJob(jobId: string): IngestJob | undefined {
 }
 
 /** Compute retry hint for pending/processing jobs. */
-export function computeRetryHint(pollCount: number): { retry_after_ms: number; should_give_up: boolean } {
+export function computeRetryHint(pollCount: number): {
+  retry_after_ms: number;
+  should_give_up: boolean;
+} {
   const retry_after_ms = Math.min(1000 * Math.pow(2, pollCount), 10_000);
   const should_give_up = pollCount >= 10;
   return { retry_after_ms, should_give_up };

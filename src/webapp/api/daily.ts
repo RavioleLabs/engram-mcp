@@ -35,7 +35,9 @@ export function dailyApi(): Router {
       : `SELECT id, type, source_id, properties_json, created_at FROM memories
          WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC`;
     const params = type ? [startOfDay, endOfDay, type] : [startOfDay, endOfDay];
-    const rows = getDb().prepare(query).all(...params) as Array<Record<string, unknown>>;
+    const rows = getDb()
+      .prepare(query)
+      .all(...params) as Array<Record<string, unknown>>;
     res.json(
       rows.map((row) => ({
         id: row.id,

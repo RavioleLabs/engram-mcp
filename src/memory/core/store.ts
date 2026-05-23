@@ -1,19 +1,12 @@
 // src/memory/core/store.ts
 import { EventEmitter } from 'events';
 import { getDb } from '../../db/index.js';
-import {
-  indexChunk,
-  semanticSearch,
-  deleteChunk,
-} from '../../vector/store.js';
+import { indexChunk, semanticSearch, deleteChunk } from '../../vector/store.js';
 import { embed } from '../../embeddings/index.js';
 import { chunkText as chunkTextBasic } from './chunker.js';
 import { createLogger } from '../../logger.js';
 import { extractProperties } from './property-extractor.js';
-import type {
-  EmbeddingsConfig,
-  PropertyExtractionConfig,
-} from '../../config/schema.js';
+import type { EmbeddingsConfig, PropertyExtractionConfig } from '../../config/schema.js';
 import type { MemoryItem, SearchResult } from '../../types.js';
 import type { OpsLogger } from '../../sync/ops-log.js';
 import type { EngramAlgorithms, EngramPrompts } from '../../core/server/mcp-handler.js';
@@ -85,14 +78,20 @@ export class MemoryStore {
     // Agent can override by setting properties.custom.{intent,importance,pinned} at remember() time.
     const { classifyIntent, defaultImportance } = await import('./signals.js');
     const custom = (item.properties.custom ?? {}) as Record<string, unknown>;
-    const intent = (typeof custom.intent === 'string' ? custom.intent : null) ??
-                   classifyIntent(item.content, item.properties.title, item.properties.tags);
-    const importance = (typeof custom.importance === 'string' && ['high', 'medium', 'low'].includes(custom.importance))
-      ? (custom.importance as 'high' | 'medium' | 'low')
-      : defaultImportance(intent as 'preference' | 'correction' | 'temporal' | 'factual' | 'other');
+    const intent =
+      (typeof custom.intent === 'string' ? custom.intent : null) ??
+      classifyIntent(item.content, item.properties.title, item.properties.tags);
+    const importance =
+      typeof custom.importance === 'string' && ['high', 'medium', 'low'].includes(custom.importance)
+        ? (custom.importance as 'high' | 'medium' | 'low')
+        : defaultImportance(
+            intent as 'preference' | 'correction' | 'temporal' | 'factual' | 'other',
+          );
     const pinned = custom.pinned === true ? 1 : 0;
-    const confidence = typeof custom.confidence === 'number' && custom.confidence > 0 && custom.confidence <= 1
-      ? custom.confidence : 1.0;
+    const confidence =
+      typeof custom.confidence === 'number' && custom.confidence > 0 && custom.confidence <= 1
+        ? custom.confidence
+        : 1.0;
 
     const db = getDb();
     const insert = db.prepare(`
@@ -122,9 +121,7 @@ export class MemoryStore {
     );
 
     // FTS index
-    db.prepare(
-      `INSERT INTO memories_fts (id, content, title, tags) VALUES (?, ?, ?, ?)`,
-    ).run(
+    db.prepare(`INSERT INTO memories_fts (id, content, title, tags) VALUES (?, ?, ?, ?)`).run(
       item.id,
       item.content,
       item.properties.title ?? '',
@@ -138,15 +135,19 @@ export class MemoryStore {
     for (let i = 0; i < chunks.length; i++) {
       const vec = await embed(chunks[i], this.options.embeddings);
       const chunkId = chunks.length === 1 ? item.id : `${item.id}:${i}`;
-      await indexChunk(item.type, {
-        id: chunkId,
-        source_id: item.source_id,
-        chunk_index: i,
-        content: chunks[i],
-        created_at: Date.parse(item.properties.created_at),
-        field1: item.properties.title ?? '',
-        field2: (item.properties.tags ?? []).join(','),
-      }, vec);
+      await indexChunk(
+        item.type,
+        {
+          id: chunkId,
+          source_id: item.source_id,
+          chunk_index: i,
+          content: chunks[i],
+          created_at: Date.parse(item.properties.created_at),
+          field1: item.properties.title ?? '',
+          field2: (item.properties.tags ?? []).join(','),
+        },
+        vec,
+      );
     }
     log.debug(`Inserted memory ${item.id} (${chunks.length} chunks) in type=${item.type}`);
     this.events.emit('memory.added', item);
@@ -193,10 +194,18 @@ export class MemoryStore {
     // sorted purely by cosine similarity often miss the high-importance + pinned
     // memory by 1-2 positions. 3x overshoot gives the ranker enough material.
     const hits = await semanticSearch(memoryType, query, this.options.embeddings, limit * 3);
-    const { signalBoost, effectiveConfidence, DEFAULT_SOFT_PURGE_THRESHOLD } = await import('./signals.js');
+    const { signalBoost, effectiveConfidence, DEFAULT_SOFT_PURGE_THRESHOLD } = await import(
+      './signals.js'
+    );
     const db = getDb();
 
-    type Scored = { memory: MemoryItem; score: number; rank: number; snippet: string; effConf: number };
+    type Scored = {
+      memory: MemoryItem;
+      score: number;
+      rank: number;
+      snippet: string;
+      effConf: number;
+    };
     const scored: Scored[] = [];
 
     for (const hit of hits) {
@@ -205,12 +214,21 @@ export class MemoryStore {
       if (!memory) continue;
 
       // Pull the signal columns directly — keep the public MemoryItem clean.
-      const sig = db.prepare(
-        `SELECT importance, pinned, skip_penalty, access_count, last_accessed_at, confidence, created_at
+      const sig = db
+        .prepare(
+          `SELECT importance, pinned, skip_penalty, access_count, last_accessed_at, confidence, created_at
          FROM memories WHERE id = ?`,
-      ).get(memoryId) as
-        | { importance: string; pinned: number; skip_penalty: number; access_count: number;
-            last_accessed_at: number | null; confidence: number; created_at: number }
+        )
+        .get(memoryId) as
+        | {
+            importance: string;
+            pinned: number;
+            skip_penalty: number;
+            access_count: number;
+            last_accessed_at: number | null;
+            confidence: number;
+            created_at: number;
+          }
         | undefined;
       if (!sig) continue;
 
@@ -376,9 +394,9 @@ export class MemoryStore {
   /** Delete vector entry only (no SQLite + no ops log). Used during tombstone finalization. */
   async deleteVectorIfExists(memoryId: string): Promise<void> {
     // Look up the memory type from SQLite (may already be deleted — that's fine)
-    const row = getDb()
-      .prepare(`SELECT type FROM memories WHERE id = ?`)
-      .get(memoryId) as { type: string } | undefined;
+    const row = getDb().prepare(`SELECT type FROM memories WHERE id = ?`).get(memoryId) as
+      | { type: string }
+      | undefined;
     const memType = row?.type;
     if (!memType) return; // already gone from SQLite — LanceDB likely also gone
     try {

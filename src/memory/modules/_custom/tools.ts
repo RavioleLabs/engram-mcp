@@ -49,7 +49,9 @@ export function buildCustomTypeTools(
         const tools = buildGenericModuleTools(def, store, config);
         router.registerMany(tools);
         log.info(
-          `Live-registered custom type ${def.type_name} with tools ${tools.map((t) => t.name).join(', ')}`,
+          `Live-registered custom type ${def.type_name} with tools ${tools
+            .map((t) => t.name)
+            .join(', ')}`,
         );
         return { type_name: def.type_name, tools: tools.map((t) => t.name) };
       },

@@ -17,7 +17,13 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { initDb, closeDb, getDb } from '../db/index.js';
-import { initCloudSaves, takeSnapshot, bootstrapFromSnapshot, encryptBuffer, decryptBuffer } from '../sync/cloud-saves.js';
+import {
+  initCloudSaves,
+  takeSnapshot,
+  bootstrapFromSnapshot,
+  encryptBuffer,
+  decryptBuffer,
+} from '../sync/cloud-saves.js';
 
 const CLOUD_URL = process.env.ENGRAM_CLOUD_URL ?? 'http://localhost:8787';
 const JWT = process.env.ENGRAM_TEST_JWT ?? '';

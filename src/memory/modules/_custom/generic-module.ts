@@ -39,10 +39,7 @@ function buildGenericItem(
   };
 }
 
-export function createGenericModule(
-  def: CustomTypeDefinition,
-  config: EngramConfig,
-): MemoryModule {
+export function createGenericModule(def: CustomTypeDefinition, config: EngramConfig): MemoryModule {
   let store: MemoryStore | null = null;
   const embeddingModel = `${config.embeddings.provider}/${config.embeddings.model}`;
 

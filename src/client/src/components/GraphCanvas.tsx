@@ -139,7 +139,7 @@ export function GraphCanvas({ data, onNodeClick, savedPositions, onPositionsChan
       if (saveTimer) clearTimeout(saveTimer);
       cy.destroy();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   return <div ref={containerRef} className="w-full h-full bg-zinc-950 rounded-lg" />;

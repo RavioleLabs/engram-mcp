@@ -71,11 +71,11 @@ async function transcribeEngram(
   if (!apiKey) {
     throw new Error(
       'Engram-hosted whisper requires an API key. ' +
-      'Set engramAccount.apiKey in ~/.engram/config.json or switch whisper.provider to "local".',
+        'Set engramAccount.apiKey in ~/.engram/config.json or switch whisper.provider to "local".',
     );
   }
 
-  const baseUrl = (ENGRAM_API_BASE).replace(/\/$/, '');
+  const baseUrl = ENGRAM_API_BASE.replace(/\/$/, '');
   const url = `${baseUrl}/api/whisper`;
 
   const audioBuffer = fs.readFileSync(audioPath);
@@ -100,18 +100,22 @@ async function transcribeEngram(
   if (!res.ok) {
     const body = await res.text();
     let parsed: { error?: string } = {};
-    try { parsed = JSON.parse(body); } catch { /* ignore */ }
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      /* ignore */
+    }
 
     if (res.status === 403 || parsed.error === 'pro_required') {
       throw new Error(
         'Engram-hosted whisper requires a Pro subscription ($9/mo). ' +
-        'Upgrade at https://engram-mcp.com/billing, or switch whisper.provider to "local".',
+          'Upgrade at https://engram-mcp.com/billing, or switch whisper.provider to "local".',
       );
     }
     if (res.status === 402 || parsed.error === 'quota_exceeded') {
       throw new Error(
         'Engram whisper quota exceeded for this month. ' +
-        'Enable overage in your account, or wait for the next billing cycle.',
+          'Enable overage in your account, or wait for the next billing cycle.',
       );
     }
     throw new Error(`Engram whisper API ${res.status}: ${body.slice(0, 200)}`);
@@ -128,11 +132,13 @@ async function transcribeEngram(
   if (data.overage_billed) {
     log.warn(
       `Engram whisper overage billed — ${data.seconds_used}s used this request. ` +
-      `Check your usage at https://engram-mcp.com/billing.`,
+        `Check your usage at https://engram-mcp.com/billing.`,
     );
   }
 
-  log.info(`Engram-hosted whisper complete — ${data.seconds_used}s billed, ${data.seconds_remaining}s remaining`);
+  log.info(
+    `Engram-hosted whisper complete — ${data.seconds_used}s billed, ${data.seconds_remaining}s remaining`,
+  );
 
   const fullText = data.transcript ?? '';
   return {

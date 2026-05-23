@@ -62,9 +62,15 @@ describe('ReplayApplier', () => {
   it('skips ops from own device', async () => {
     const identity = getOrCreateDeviceIdentity(db);
     // Build a fake op attributed to this device
-    const op: WireOp = buildFakeOp(identity.device_id, identity.privkey_hex, 'add_memory', 'mem-1', {
-      item: { id: 'mem-1', type: 'notes', content: 'hi', content_hash: 'abc' },
-    });
+    const op: WireOp = buildFakeOp(
+      identity.device_id,
+      identity.privkey_hex,
+      'add_memory',
+      'mem-1',
+      {
+        item: { id: 'mem-1', type: 'notes', content: 'hi', content_hash: 'abc' },
+      },
+    );
 
     const applier = new ReplayApplier(db, {} as unknown as MemoryStore, masterKey);
     await applier.applyOp(op, identity.device_id); // should be no-op
@@ -115,9 +121,9 @@ describe('ReplayApplier', () => {
     await applier.applyOp(op, identity.device_id);
     await applier.applyOp(op, identity.device_id); // second apply should no-op
 
-    const row = db
-      .prepare(`SELECT properties_json FROM memories WHERE id = 'mem-idem'`)
-      .get() as { properties_json: string };
+    const row = db.prepare(`SELECT properties_json FROM memories WHERE id = 'mem-idem'`).get() as {
+      properties_json: string;
+    };
     const props = JSON.parse(row.properties_json) as { title: string };
     expect(props.title).toBe('updated');
   });

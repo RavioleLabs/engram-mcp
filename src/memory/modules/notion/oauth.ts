@@ -16,9 +16,7 @@ export interface NotionTokens {
 
 function loadTokens(): NotionTokens | undefined {
   const row = getDb()
-    .prepare(
-      `SELECT access_token, extra_json FROM oauth_tokens WHERE provider = 'notion'`,
-    )
+    .prepare(`SELECT access_token, extra_json FROM oauth_tokens WHERE provider = 'notion'`)
     .get() as { access_token: string; extra_json: string | null } | undefined;
   if (!row) return undefined;
   const extra = row.extra_json ? JSON.parse(row.extra_json) : {};

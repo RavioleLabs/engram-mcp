@@ -26,15 +26,16 @@ export interface WorkspaceToolsContext {
 }
 
 export function buildWorkspaceTools(ctx: WorkspaceToolsContext): MCPToolDefinition[] {
-  const cloudUrl = (ctx.config as unknown as Record<string, unknown>).cloudBaseUrl as string | undefined
-    ?? 'https://api.engram-mcp.com';
+  const cloudUrl =
+    ((ctx.config as unknown as Record<string, unknown>).cloudBaseUrl as string | undefined) ??
+    'https://api.engram-mcp.com';
   const dataDir = ctx.config.dataDir;
 
   async function cloudFetch(path: string, init: RequestInit = {}): Promise<Response> {
     const jwt = await ctx.getJwt();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...(init.headers as Record<string, string> ?? {}),
+      ...((init.headers as Record<string, string>) ?? {}),
     };
     if (jwt) headers['Cookie'] = `engram_session=${jwt}`;
     return fetch(`${cloudUrl}${path}`, { ...init, headers });
@@ -55,8 +56,16 @@ export function buildWorkspaceTools(ctx: WorkspaceToolsContext): MCPToolDefiniti
         const { getDb } = await import('../../../db/index.js');
         const db = getDb();
         const rows = db
-          .prepare('SELECT id, name, role, owner_email, joined_at FROM workspaces ORDER BY joined_at ASC')
-          .all() as Array<{ id: string; name: string; role: string; owner_email: string | null; joined_at: string }>;
+          .prepare(
+            'SELECT id, name, role, owner_email, joined_at FROM workspaces ORDER BY joined_at ASC',
+          )
+          .all() as Array<{
+          id: string;
+          name: string;
+          role: string;
+          owner_email: string | null;
+          joined_at: string;
+        }>;
 
         return {
           workspaces: [
@@ -114,12 +123,12 @@ export function buildWorkspaceTools(ctx: WorkspaceToolsContext): MCPToolDefiniti
         });
 
         if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as Record<string, string>;
+          const err = (await res.json().catch(() => ({}))) as Record<string, string>;
           log.error('create_workspace cloud error', err);
           return { error: err.error ?? `cloud_error_${res.status}`, message: err.message };
         }
 
-        const data = await res.json() as { id: string; name: string };
+        const data = (await res.json()) as { id: string; name: string };
 
         // Store team master key + register workspace locally
         const { getDb } = await import('../../../db/index.js');
@@ -159,7 +168,10 @@ export function buildWorkspaceTools(ctx: WorkspaceToolsContext): MCPToolDefiniti
       },
       handler: async (args) => {
         if (!args.confirm) {
-          return { error: 'confirm_required', message: 'Pass confirm: true to leave the workspace.' };
+          return {
+            error: 'confirm_required',
+            message: 'Pass confirm: true to leave the workspace.',
+          };
         }
 
         const workspaceId = args.workspace_id as string;
@@ -212,16 +224,21 @@ export function buildWorkspaceTools(ctx: WorkspaceToolsContext): MCPToolDefiniti
         const { loadWorkspaceKey } = await import('./keystore.js');
         const teamKey = await loadWorkspaceKey(dataDir, workspaceId);
         if (!teamKey) {
-          return { error: 'team_key_not_found', message: 'You do not have a local key for this workspace. Are you the owner?' };
+          return {
+            error: 'team_key_not_found',
+            message: 'You do not have a local key for this workspace. Are you the owner?',
+          };
         }
 
         // Fetch invitee's pubkey from cloud
         const pubkeyRes = await cloudFetch(`/api/users/pubkey?email=${encodeURIComponent(email)}`);
         if (!pubkeyRes.ok) {
-          const err = await pubkeyRes.json().catch(() => ({})) as Record<string, string>;
+          const err = (await pubkeyRes.json().catch(() => ({}))) as Record<string, string>;
           return { error: err.error ?? 'pubkey_fetch_failed', message: err.message };
         }
-        const { x25519_pubkey: inviteePubkeyHex } = await pubkeyRes.json() as { x25519_pubkey: string };
+        const { x25519_pubkey: inviteePubkeyHex } = (await pubkeyRes.json()) as {
+          x25519_pubkey: string;
+        };
 
         // Wrap team key for invitee
         const wrappedForInvitee = await wrapKeyForRecipient(teamKey, inviteePubkeyHex);
@@ -233,11 +250,11 @@ export function buildWorkspaceTools(ctx: WorkspaceToolsContext): MCPToolDefiniti
         });
 
         if (!invRes.ok) {
-          const err = await invRes.json().catch(() => ({})) as Record<string, string>;
+          const err = (await invRes.json().catch(() => ({}))) as Record<string, string>;
           return { error: err.error ?? 'invite_failed', message: err.message };
         }
 
-        const data = await invRes.json() as { invitation_id: string };
+        const data = (await invRes.json()) as { invitation_id: string };
         log.info(`Invited ${email} to workspace ${workspaceId}`);
         return { ok: true, invitation_id: data.invitation_id };
 
@@ -272,23 +289,28 @@ export function buildWorkspaceTools(ctx: WorkspaceToolsContext): MCPToolDefiniti
         });
 
         if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as Record<string, string>;
+          const err = (await res.json().catch(() => ({}))) as Record<string, string>;
           return { error: err.error ?? 'accept_failed', message: err.message };
         }
 
-        const data = await res.json() as {
+        const data = (await res.json()) as {
           workspace_id: string;
           wrapped_team_key?: string;
         };
 
         if (data.wrapped_team_key) {
-          await unwrapAndStoreWorkspaceKey(dataDir, data.workspace_id, data.wrapped_team_key, keypair);
+          await unwrapAndStoreWorkspaceKey(
+            dataDir,
+            data.workspace_id,
+            data.wrapped_team_key,
+            keypair,
+          );
         }
 
         // Register workspace locally
         const workspaceInfoRes = await cloudFetch('/api/workspaces');
         if (workspaceInfoRes.ok) {
-          const { workspaces } = await workspaceInfoRes.json() as {
+          const { workspaces } = (await workspaceInfoRes.json()) as {
             workspaces: Array<{ id: string; name: string; role: string; joined_at: string }>;
           };
           const ws = workspaces.find((w) => w.id === data.workspace_id);

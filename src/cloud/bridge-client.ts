@@ -52,10 +52,7 @@ interface TunnelResponse {
 // Local HTTP forwarder
 // ---------------------------------------------------------------------------
 
-async function forwardToLocal(
-  req: TunnelRequest,
-  localPort: number,
-): Promise<TunnelResponse> {
+async function forwardToLocal(req: TunnelRequest, localPort: number): Promise<TunnelResponse> {
   // Security: only /api/* paths
   if (!req.path.startsWith('/api/')) {
     return {
@@ -182,15 +179,19 @@ export function startBridgeClient(opts: BridgeClientOptions): BridgeClient {
           }
 
           // Tunnel request must have requestId + method + path
-          if (typeof obj.requestId !== 'string' || typeof obj.method !== 'string' || typeof obj.path !== 'string') {
-            log.warn(`Bridge relay: invalid tunnel frame (missing requestId/method/path), ignoring`);
+          if (
+            typeof obj.requestId !== 'string' ||
+            typeof obj.method !== 'string' ||
+            typeof obj.path !== 'string'
+          ) {
+            log.warn(
+              `Bridge relay: invalid tunnel frame (missing requestId/method/path), ignoring`,
+            );
             return;
           }
 
           const req = obj as unknown as TunnelRequest;
-          log.debug(
-            `Bridge relay: tunnel request ${req.requestId} ${req.method} ${req.path}`,
-          );
+          log.debug(`Bridge relay: tunnel request ${req.requestId} ${req.method} ${req.path}`);
 
           const response = await forwardToLocal(req, opts.localPort);
           if (ws?.readyState === WebSocket.OPEN) {

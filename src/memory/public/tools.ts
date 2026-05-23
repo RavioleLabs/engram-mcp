@@ -13,13 +13,13 @@ const log = createLogger('public-tools');
 
 // ── Per-type weights for OSS recall calibration ───────────────────────────────
 const TYPE_WEIGHTS: Record<string, number> = {
-  notes: 1.00,           // user-curated, high signal
-  conversations: 0.95,   // recent, dialog context
-  drive: 0.90,           // structured documents
-  notion: 0.90,
-  obsidian: 0.95,        // user notes, high signal
-  audio: 0.80,           // transcripts can be noisy
-  youtube: 0.75,         // longer, lower signal density
+  notes: 1.0, // user-curated, high signal
+  conversations: 0.95, // recent, dialog context
+  drive: 0.9, // structured documents
+  notion: 0.9,
+  obsidian: 0.95, // user notes, high signal
+  audio: 0.8, // transcripts can be noisy
+  youtube: 0.75, // longer, lower signal density
 };
 
 // Recency boost (exp decay, half-life ~180 days)
@@ -69,12 +69,14 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           },
           scope: {
             type: 'string',
-            description: 'Visibility scope: "personal" (default, private to you) or "workspace:<id>" for a team workspace.',
+            description:
+              'Visibility scope: "personal" (default, private to you) or "workspace:<id>" for a team workspace.',
             default: 'personal',
           },
           properties: {
             type: 'object',
-            description: 'Optional extra metadata: source_url, author, sentiment, action_required, custom fields.',
+            description:
+              'Optional extra metadata: source_url, author, sentiment, action_required, custom fields.',
           },
         },
         required: ['content'],
@@ -97,8 +99,9 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         const contentBytes = Buffer.byteLength(content, 'utf-8');
         if (contentBytes > MAX_CONTENT_BYTES) {
           throw new Error(
-            `content too large (${Math.round(contentBytes / 1024)} KB) — max ${MAX_CONTENT_BYTES / 1024} KB. ` +
-              `Split into multiple remember() calls or use ingest() for large files.`,
+            `content too large (${Math.round(contentBytes / 1024)} KB) — max ${
+              MAX_CONTENT_BYTES / 1024
+            } KB. ` + `Split into multiple remember() calls or use ingest() for large files.`,
           );
         }
 
@@ -175,16 +178,19 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         properties: {
           query: {
             type: 'string',
-            description: 'Short topic string — NOT the full user question. Extract the key noun/concept.',
+            description:
+              'Short topic string — NOT the full user question. Extract the key noun/concept.',
           },
           types: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Restrict to these memory types (default: all). Faster when type is known.',
+            description:
+              'Restrict to these memory types (default: all). Faster when type is known.',
           },
           scope: {
             type: 'string',
-            description: '"personal" (default), "workspace:<id>", or "all" (personal + all workspaces).',
+            description:
+              '"personal" (default), "workspace:<id>", or "all" (personal + all workspaces).',
             default: 'personal',
           },
           limit: {
@@ -385,7 +391,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         'WHEN: "what else is connected to this?", building a memory graph, or exploring a topic cluster.',
         'Use recall instead of relate when starting from a query string.',
         'ANTI-LOOP: if returns empty, this memory has no semantic neighbors above the threshold — DO NOT retry.',
-        'Try recall with the memory\'s tags instead.',
+        "Try recall with the memory's tags instead.",
         'RETURNS: array of { id, type, score, snippet, title }.',
       ].join(' '),
       inputSchema: {
@@ -450,7 +456,8 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           },
           scope: {
             type: 'string',
-            description: '"personal" (default), "workspace:<id>", or "all" (personal + all workspaces).',
+            description:
+              '"personal" (default), "workspace:<id>", or "all" (personal + all workspaces).',
             default: 'personal',
           },
         },
@@ -566,7 +573,14 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
             if (duration !== null && duration < 300) {
               // Short video (<5 min) — sync path
               try {
-                const result = await routeIngest(uri, forceType, titleOverride, tagsOverride, store, config);
+                const result = await routeIngest(
+                  uri,
+                  forceType,
+                  titleOverride,
+                  tagsOverride,
+                  store,
+                  config,
+                );
                 return { ...result, status: 'completed', fast_path: true };
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
@@ -585,7 +599,14 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         }
 
         try {
-          const result = await routeIngest(uri, forceType, titleOverride, tagsOverride, store, config);
+          const result = await routeIngest(
+            uri,
+            forceType,
+            titleOverride,
+            tagsOverride,
+            store,
+            config,
+          );
           return { ...result, status: 'completed' };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -704,7 +725,8 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           },
           opts: {
             type: 'object',
-            description: 'Module-specific options (e.g. { recursive: true } for obsidian, { channelName: "My Channel" } for youtube).',
+            description:
+              'Module-specific options (e.g. { recursive: true } for obsidian, { channelName: "My Channel" } for youtube).',
           },
         },
         required: ['source_type', 'target_id'],
@@ -718,17 +740,25 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
 
         switch (sourceType) {
           case 'drive': {
-            const { getFileMetadata, downloadFileContent } = await import('../modules/drive/connector.js');
+            const { getFileMetadata, downloadFileContent } = await import(
+              '../modules/drive/connector.js'
+            );
             const { buildDriveItem } = await import('../modules/drive/ingest.js');
             const meta = await getFileMetadata(targetId, config);
-            const { id: sourceId, alreadyExists: driveAlreadyExists } = sourceRegistry.addWithStatus({
-              module_id: 'drive',
-              external_id: targetId,
-              display_name: meta.name,
-              config: { mimeType: meta.mimeType },
-            });
+            const { id: sourceId, alreadyExists: driveAlreadyExists } =
+              sourceRegistry.addWithStatus({
+                module_id: 'drive',
+                external_id: targetId,
+                display_name: meta.name,
+                config: { mimeType: meta.mimeType },
+              });
             if (driveAlreadyExists) {
-              return { watched: true, already_watching: true, source_id: sourceId, display_name: meta.name };
+              return {
+                watched: true,
+                already_watching: true,
+                source_id: sourceId,
+                display_name: meta.name,
+              };
             }
             const content = await downloadFileContent(targetId, meta.mimeType, config);
             if (content) {
@@ -740,16 +770,24 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           }
 
           case 'notion': {
-            const { getPageMetadata, fetchPageText } = await import('../modules/notion/connector.js');
+            const { getPageMetadata, fetchPageText } = await import(
+              '../modules/notion/connector.js'
+            );
             const { buildNotionItem } = await import('../modules/notion/ingest.js');
             const meta = await getPageMetadata(targetId);
-            const { id: sourceId, alreadyExists: notionAlreadyExists } = sourceRegistry.addWithStatus({
-              module_id: 'notion',
-              external_id: meta.id,
-              display_name: meta.title,
-            });
+            const { id: sourceId, alreadyExists: notionAlreadyExists } =
+              sourceRegistry.addWithStatus({
+                module_id: 'notion',
+                external_id: meta.id,
+                display_name: meta.title,
+              });
             if (notionAlreadyExists) {
-              return { watched: true, already_watching: true, source_id: sourceId, display_name: meta.title };
+              return {
+                watched: true,
+                already_watching: true,
+                source_id: sourceId,
+                display_name: meta.title,
+              };
             }
             const content = await fetchPageText(meta.id);
             const item = buildNotionItem({ metadata: meta, content, embeddingModel });
@@ -770,7 +808,12 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
             });
             if (ytAlreadyExists) {
               const existingSource = sourceRegistry.get(sourceId);
-              return { watched: true, already_watching: true, source_id: sourceId, display_name: existingSource?.display_name ?? channelName };
+              return {
+                watched: true,
+                already_watching: true,
+                source_id: sourceId,
+                display_name: existingSource?.display_name ?? channelName,
+              };
             }
             return { watched: true, source_id: sourceId, display_name: channelName };
           }
@@ -780,14 +823,20 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
             const { readVault } = await import('../modules/obsidian/vault-reader.js');
             const { buildObsidianItem } = await import('../modules/obsidian/ingest.js');
             const vaultPath = path.default.resolve(targetId);
-            const { id: sourceId, alreadyExists: obsidianAlreadyExists } = sourceRegistry.addWithStatus({
-              module_id: 'obsidian',
-              external_id: vaultPath,
-              display_name: path.default.basename(vaultPath),
-              config: { vault_path: vaultPath },
-            });
+            const { id: sourceId, alreadyExists: obsidianAlreadyExists } =
+              sourceRegistry.addWithStatus({
+                module_id: 'obsidian',
+                external_id: vaultPath,
+                display_name: path.default.basename(vaultPath),
+                config: { vault_path: vaultPath },
+              });
             if (obsidianAlreadyExists) {
-              return { watched: true, already_watching: true, source_id: sourceId, display_name: path.default.basename(vaultPath) };
+              return {
+                watched: true,
+                already_watching: true,
+                source_id: sourceId,
+                display_name: path.default.basename(vaultPath),
+              };
             }
             const files = await readVault(vaultPath);
             for (const file of files) {
@@ -796,7 +845,12 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
               await store.insert(item);
             }
             sourceRegistry.recordSync(sourceId, new Date().toISOString());
-            return { watched: true, source_id: sourceId, display_name: path.default.basename(vaultPath), files_indexed: files.length };
+            return {
+              watched: true,
+              source_id: sourceId,
+              display_name: path.default.basename(vaultPath),
+              files_indexed: files.length,
+            };
           }
 
           default:
@@ -820,15 +874,18 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           source_type: {
             type: 'string',
             enum: ['drive', 'notion', 'youtube', 'obsidian'],
-            description: 'Type of source (used to look up the right entry if source_id not provided).',
+            description:
+              'Type of source (used to look up the right entry if source_id not provided).',
           },
           target_id: {
             type: 'string',
-            description: 'The original target_id passed to watch() (file id, page id, channel id, or vault path). Alternatively, pass source_id directly.',
+            description:
+              'The original target_id passed to watch() (file id, page id, channel id, or vault path). Alternatively, pass source_id directly.',
           },
           source_id: {
             type: 'string',
-            description: 'The source_id returned by watch(). If provided, source_type and target_id are ignored.',
+            description:
+              'The source_id returned by watch(). If provided, source_type and target_id are ignored.',
           },
         },
       },
@@ -919,7 +976,9 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         required: ['name'],
       },
       handler: async (args) => {
-        const { createCustomType, listCustomTypes } = await import('../modules/_custom/persistence.js');
+        const { createCustomType, listCustomTypes } = await import(
+          '../modules/_custom/persistence.js'
+        );
         const { createGenericModule } = await import('../modules/_custom/generic-module.js');
         const { moduleRegistry } = await import('../core/module-registry.js');
 
@@ -977,7 +1036,11 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
               setTimeout(() => resolve({ timeout: true }), 300_000),
             ),
           ]);
-          return { auth_url: flow.authUrl, instructions: 'Open auth_url in your browser and authorize. Then confirm here.', ...result };
+          return {
+            auth_url: flow.authUrl,
+            instructions: 'Open auth_url in your browser and authorize. Then confirm here.',
+            ...result,
+          };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           return {
@@ -1003,8 +1066,15 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Google Drive search query (e.g. "name contains \'report\'".' },
-          limit: { type: 'number', default: 25, description: 'Max files to return (default 25, max 100).' },
+          query: {
+            type: 'string',
+            description: 'Google Drive search query (e.g. "name contains \'report\'".',
+          },
+          limit: {
+            type: 'number',
+            default: 25,
+            description: 'Max files to return (default 25, max 100).',
+          },
         },
       },
       handler: async (args) => {
@@ -1022,12 +1092,14 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
             query: args.query as string | undefined,
             pageSize: (args.limit as number) ?? 25,
           });
-          return files.map((f: { id: string; name: string; mimeType: string; modifiedTime: string }) => ({
-            id: f.id,
-            name: f.name,
-            mimeType: f.mimeType,
-            modifiedTime: f.modifiedTime,
-          }));
+          return files.map(
+            (f: { id: string; name: string; mimeType: string; modifiedTime: string }) => ({
+              id: f.id,
+              name: f.name,
+              mimeType: f.mimeType,
+              modifiedTime: f.modifiedTime,
+            }),
+          );
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           return {
@@ -1053,7 +1125,9 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
       ].join(' '),
       inputSchema: { type: 'object', properties: {} },
       handler: async () => {
-        const { startNotionOAuthFlow, isNotionConnected, getNotionWorkspace } = await import('../modules/notion/oauth.js');
+        const { startNotionOAuthFlow, isNotionConnected, getNotionWorkspace } = await import(
+          '../modules/notion/oauth.js'
+        );
         if (isNotionConnected()) {
           const ws = getNotionWorkspace();
           return { already_connected: true, workspace: ws?.name };
@@ -1068,12 +1142,19 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         try {
           const flow = await startNotionOAuthFlow(config);
           const result = await Promise.race([
-            flow.waitForCallback.then((t: { workspace_name: string }) => ({ connected: true, workspace: t.workspace_name })),
+            flow.waitForCallback.then((t: { workspace_name: string }) => ({
+              connected: true,
+              workspace: t.workspace_name,
+            })),
             new Promise<{ timeout: boolean }>((resolve) =>
               setTimeout(() => resolve({ timeout: true }), 300_000),
             ),
           ]);
-          return { auth_url: flow.authUrl, instructions: 'Open auth_url in your browser and authorize. Then confirm here.', ...result };
+          return {
+            auth_url: flow.authUrl,
+            instructions: 'Open auth_url in your browser and authorize. Then confirm here.',
+            ...result,
+          };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           return {
@@ -1106,11 +1187,13 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
       handler: async (args) => {
         const { searchPages } = await import('../modules/notion/connector.js');
         const { isNotionConnected } = await import('../modules/notion/oauth.js');
-        if (!isNotionConnected()) return { error: 'notion_not_connected', message: 'Notion is not connected.', hint: 'Call connect_notion first to authenticate with Notion.' };
-        return await searchPages(
-          (args.query as string) ?? '',
-          (args.limit as number) ?? 25,
-        );
+        if (!isNotionConnected())
+          return {
+            error: 'notion_not_connected',
+            message: 'Notion is not connected.',
+            hint: 'Call connect_notion first to authenticate with Notion.',
+          };
+        return await searchPages((args.query as string) ?? '', (args.limit as number) ?? 25);
       },
     },
 
@@ -1120,7 +1203,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
       description: [
         'Bulk-import a YouTube playlist (public URL). Imports all videos as memory items.',
         'SLOW: can take 1-30 minutes depending on playlist size.',
-        'ANTI-LOOP: DO NOT call twice for the same playlist — duplicates are deduped but the API hammering wastes the user\'s YouTube quota.',
+        "ANTI-LOOP: DO NOT call twice for the same playlist — duplicates are deduped but the API hammering wastes the user's YouTube quota.",
         'For individual YouTube videos, use ingest(youtube_url) instead.',
         'Poll get_ingest_status(job_id) to track progress.',
         'RETURNS: { job_id?, status, imported?, errors? } — large playlists run as async job.',
@@ -1208,7 +1291,10 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           }),
         );
 
-        let candidates = allResults.flat().sort((a, b) => b.score - a.score).slice(0, limit);
+        let candidates = allResults
+          .flat()
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit);
 
         // Apply lookback filter if specified
         if (lookbackDays !== undefined) {
@@ -1380,7 +1466,10 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         const periodTo = new Date().toISOString();
 
         const instruction = [
-          `Summarize the user's ${days}-day window (${periodFrom.slice(0, 10)} to ${periodTo.slice(0, 10)}) from ${memories.length} memories.`,
+          `Summarize the user's ${days}-day window (${periodFrom.slice(0, 10)} to ${periodTo.slice(
+            0,
+            10,
+          )}) from ${memories.length} memories.`,
           ``,
           `Produce a structured digest with these sections:`,
           `1. **Highlights** — the 3-5 most significant things that happened or were captured.`,
@@ -1454,12 +1543,13 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           }),
         );
 
-        let candidates = allResults.flat().sort((a, b) => b.score - a.score).slice(0, 50);
+        let candidates = allResults
+          .flat()
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 50);
 
         // Apply lookback filter
-        candidates = candidates.filter(
-          (c) => Date.parse(c.memory.properties.created_at) >= cutoff,
-        );
+        candidates = candidates.filter((c) => Date.parse(c.memory.properties.created_at) >= cutoff);
 
         if (candidates.length === 0) {
           return {
@@ -1565,7 +1655,9 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           const { getDb } = await import('../../db/index.js');
           const db = getDb();
           const memoryCount = (
-            db.prepare(`SELECT COUNT(*) as n FROM memories WHERE type = ?`).get(typeName) as { n: number }
+            db.prepare(`SELECT COUNT(*) as n FROM memories WHERE type = ?`).get(typeName) as {
+              n: number;
+            }
           ).n;
           return {
             error: 'confirm_required',
@@ -1590,7 +1682,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
       name: 'skip',
       description: [
         'Mark a memory as "not useful right now" — multiplies its skip_penalty by 0.2.',
-        'WHEN: a recall result is genuinely irrelevant and the agent shouldn\'t surface it again on similar queries.',
+        "WHEN: a recall result is genuinely irrelevant and the agent shouldn't surface it again on similar queries.",
         'NOT for deletion — the memory stays in storage and unskip() restores full rank.',
         'IDEMPOTENT: calling twice multiplies penalty again (0.2 → 0.04). Use sparingly.',
         'RETURNS: { id, skip_penalty: <new value> }.',
@@ -1604,9 +1696,9 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         const id = args.id as string;
         const { getDb } = await import('../../db/index.js');
         const db = getDb();
-        const result = db.prepare(
-          `UPDATE memories SET skip_penalty = MAX(0.001, skip_penalty * 0.2) WHERE id = ?`,
-        ).run(id);
+        const result = db
+          .prepare(`UPDATE memories SET skip_penalty = MAX(0.001, skip_penalty * 0.2) WHERE id = ?`)
+          .run(id);
         if (result.changes === 0) return { error: 'not_found', id };
         const row = db.prepare(`SELECT skip_penalty FROM memories WHERE id = ?`).get(id) as
           | { skip_penalty: number }
@@ -1680,7 +1772,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
     {
       name: 'set_importance',
       description: [
-        'Set a memory\'s importance level — affects decay half-life (high=90d, medium=30d, low=14d) and recall ranking.',
+        "Set a memory's importance level — affects decay half-life (high=90d, medium=30d, low=14d) and recall ranking.",
         'WHEN: user marks something as critical, or the agent decides a memory deserves more/less prominence.',
         'Default importance is set automatically at remember() time based on intent classification (preferences + corrections → high).',
         'IDEMPOTENT.',
@@ -1737,9 +1829,22 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         if (!root) return { error: 'not_found', id: rootId };
 
         const visited = new Set<string>([rootId]);
-        const chain: Array<{ depth: number; memories: Array<{ id: string; type: string; title?: string; via: 'wikilink' | 'related' }> }> = [];
+        const chain: Array<{
+          depth: number;
+          memories: Array<{
+            id: string;
+            type: string;
+            title?: string;
+            via: 'wikilink' | 'related';
+          }>;
+        }> = [];
 
-        type ChainEntry = { id: string; type: string; title: string | undefined; via: 'wikilink' | 'related' };
+        type ChainEntry = {
+          id: string;
+          type: string;
+          title: string | undefined;
+          via: 'wikilink' | 'related';
+        };
         let frontier: string[] = [rootId];
         for (let d = 1; d <= maxDepth; d++) {
           const nextFrontier: Array<{ id: string; via: 'wikilink' | 'related' }> = [];
@@ -1895,8 +2000,11 @@ export async function routeIngest(
     normalUri.startsWith('https://www.notion.so/') ||
     normalUri.startsWith('obsidian://');
   if (!isOauthBoundUrl) {
-    const { validateFileUri, validateHttpUri } = await import('../../core/security/uri-validator.js');
-    const extraAllowed = (config as unknown as { ingest?: { allowedPaths?: string[] } }).ingest?.allowedPaths ?? [];
+    const { validateFileUri, validateHttpUri } = await import(
+      '../../core/security/uri-validator.js'
+    );
+    const extraAllowed =
+      (config as unknown as { ingest?: { allowedPaths?: string[] } }).ingest?.allowedPaths ?? [];
     if (normalUri.startsWith('file://')) {
       validateFileUri(normalUri, extraAllowed);
     } else if (normalUri.startsWith('http://') || normalUri.startsWith('https://')) {
@@ -1913,7 +2021,11 @@ export async function routeIngest(
     const { buildYoutubeItem } = await import('../modules/youtube/ingest.js');
     const transcript = await fetchTranscript(normalUri, config.youtube);
     // Fail fast if transcript is empty — do not create an empty memory
-    if (!transcript.full_text || transcript.full_text.trim() === '' || transcript.segments.length === 0) {
+    if (
+      !transcript.full_text ||
+      transcript.full_text.trim() === '' ||
+      transcript.segments.length === 0
+    ) {
       throw new Error(
         `Could not fetch transcript — video may have no captions or yt-dlp is unavailable (video_id: ${transcript.video_id})`,
       );
@@ -2045,10 +2157,15 @@ export async function routeIngest(
 
       try {
         const buffer = await readFile(filePath);
-        const { PDFParse } = await import('pdf-parse') as unknown as { PDFParse: new (opts: { data: Buffer; verbosity?: number }) => { getText(): Promise<{ text: string }> } };
+        const { PDFParse } = (await import('pdf-parse')) as unknown as {
+          PDFParse: new (opts: { data: Buffer; verbosity?: number }) => {
+            getText(): Promise<{ text: string }>;
+          };
+        };
         const parser = new PDFParse({ data: buffer, verbosity: 0 });
         const result = await parser.getText();
-        content = result.text.trim() || `[PDF] ${title} — no extractable text (possibly scanned image PDF)`;
+        content =
+          result.text.trim() || `[PDF] ${title} — no extractable text (possibly scanned image PDF)`;
       } catch (e) {
         extractionFailed = true;
         extractionError = e instanceof Error ? e.message : String(e);
@@ -2065,11 +2182,16 @@ export async function routeIngest(
         content_hash: createHash('sha256').update(content).digest('hex'),
         properties: {
           title,
-          tags: extractionFailed ? [...(tagsOverride ?? []), 'pdf_extraction_failed'] : tagsOverride,
+          tags: extractionFailed
+            ? [...(tagsOverride ?? []), 'pdf_extraction_failed']
+            : tagsOverride,
           created_at: now,
           ingested_at: now,
           source_url: normalUri,
-          custom: { pdf_path: filePath, extraction_status: extractionFailed ? 'failed' : 'complete' },
+          custom: {
+            pdf_path: filePath,
+            extraction_status: extractionFailed ? 'failed' : 'complete',
+          },
         },
         wikilinks,
         related_ids: [] as string[],
@@ -2154,7 +2276,10 @@ export async function routeIngest(
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       if (titleMatch) autoTitle = titleMatch[1].trim();
       // Naive text extraction: strip tags
-      content = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').slice(0, 5000);
+      content = html
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .slice(0, 5000);
     } catch {
       // fetch failed — just store URL as note
     }

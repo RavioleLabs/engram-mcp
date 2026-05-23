@@ -39,9 +39,7 @@ const LAST_TS_KEY = 'last_ts';
 
 function getLastTs(): string {
   const row = getDb()
-    .prepare(
-      'SELECT value_json FROM module_state WHERE module_id = ? AND key = ?',
-    )
+    .prepare('SELECT value_json FROM module_state WHERE module_id = ? AND key = ?')
     .get(MODULE_ID, LAST_TS_KEY) as { value_json: string } | undefined;
   if (!row) return new Date(0).toISOString(); // epoch — fetch everything
   return JSON.parse(row.value_json) as string;

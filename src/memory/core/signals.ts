@@ -31,11 +31,11 @@ export const DEFAULT_SOFT_PURGE_THRESHOLD = 0.05;
 export interface SignalFields {
   importance: Importance;
   pinned: boolean;
-  skip_penalty: number;       // 1.0 = neutral, 0.2 = penalised, 0 = ignored
-  access_count: number;       // bumped on every recall/get hit
-  last_accessed_at: number | null;  // unix ms
-  confidence: number;         // 0..1, base trust score
-  created_at: number;         // unix ms
+  skip_penalty: number; // 1.0 = neutral, 0.2 = penalised, 0 = ignored
+  access_count: number; // bumped on every recall/get hit
+  last_accessed_at: number | null; // unix ms
+  confidence: number; // 0..1, base trust score
+  created_at: number; // unix ms
 }
 
 /**
@@ -120,12 +120,13 @@ export function classifyIntent(content: string, title?: string, tags?: string[])
 
   for (const p of CORRECTION_PATTERNS) if (p.test(haystack)) return 'correction';
   for (const p of PREFERENCE_PATTERNS) if (p.test(haystack)) return 'preference';
-  for (const p of TEMPORAL_PATTERNS)   if (p.test(haystack)) return 'temporal';
+  for (const p of TEMPORAL_PATTERNS) if (p.test(haystack)) return 'temporal';
 
   // Factual default: short statements with concrete subject/verb structure.
   // Anything left after the above filters is either factual (a "fact about X")
   // or 'other' (free-form text with no clear intent signal).
-  if (haystack.length < 600 && /[A-Z][a-z]+ (is|are|was|were|has|have)/.test(content)) return 'factual';
+  if (haystack.length < 600 && /[A-Z][a-z]+ (is|are|was|were|has|have)/.test(content))
+    return 'factual';
 
   return 'other';
 }

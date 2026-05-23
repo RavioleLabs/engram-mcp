@@ -10,7 +10,12 @@ import type { EngramConfig } from '../../../../config/schema.js';
 
 const config: EngramConfig = {
   dataDir: '~/.engram',
-  embeddings: { provider: 'ollama' as const, baseUrl: 'http://localhost:11434', model: 'nomic-embed-text', dimensions: 768 },
+  embeddings: {
+    provider: 'ollama' as const,
+    baseUrl: 'http://localhost:11434',
+    model: 'nomic-embed-text',
+    dimensions: 768,
+  },
   drive: undefined,
   notion: undefined,
   propertyExtraction: {
@@ -56,34 +61,28 @@ describe('obsidian module e2e', () => {
     fs.rmSync(vault, { recursive: true, force: true });
   });
 
-  it(
-    'add_obsidian_vault indexes every markdown file',
-    async () => {
-      const tools = buildObsidianModuleTools(store, config);
-      const result = (await tools.find((t) => t.name === 'add_obsidian_vault')!.handler({
+  it('add_obsidian_vault indexes every markdown file', async () => {
+    const tools = buildObsidianModuleTools(store, config);
+    const result = (await tools
+      .find((t) => t.name === 'add_obsidian_vault')!
+      .handler({
         vault_path: vault,
       })) as { files_ingested: number };
-      expect(result.files_ingested).toBe(2);
-    },
-    30_000,
-  );
+    expect(result.files_ingested).toBe(2);
+  }, 30_000);
 
-  it(
-    'parses frontmatter title and tags',
-    async () => {
-      const tools = buildObsidianModuleTools(store, config);
-      await tools.find((t) => t.name === 'add_obsidian_vault')!.handler({ vault_path: vault });
+  it('parses frontmatter title and tags', async () => {
+    const tools = buildObsidianModuleTools(store, config);
+    await tools.find((t) => t.name === 'add_obsidian_vault')!.handler({ vault_path: vault });
 
-      const types = store.listTypes();
-      expect(types).toContain('obsidian');
+    const types = store.listTypes();
+    expect(types).toContain('obsidian');
 
-      const hits = await store.search('obsidian', 'standards typescript ULID', 5);
-      expect(hits.length).toBeGreaterThan(0);
-      const top = hits[0].memory;
-      expect(top.properties.title).toBe('Engineering Standards');
-      expect(top.properties.tags).toContain('code');
-      expect(top.wikilinks).toContain('Code Review');
-    },
-    30_000,
-  );
+    const hits = await store.search('obsidian', 'standards typescript ULID', 5);
+    expect(hits.length).toBeGreaterThan(0);
+    const top = hits[0].memory;
+    expect(top.properties.title).toBe('Engineering Standards');
+    expect(top.properties.tags).toContain('code');
+    expect(top.wikilinks).toContain('Code Review');
+  }, 30_000);
 });

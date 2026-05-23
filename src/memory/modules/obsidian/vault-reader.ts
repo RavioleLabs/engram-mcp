@@ -45,7 +45,8 @@ function globToRegex(glob: string): RegExp {
 
 function isIgnored(rel: string, patterns: RegExp[]): boolean {
   // Always ignore Obsidian config + system folders
-  if (rel.includes('/.obsidian/') || rel.startsWith('.obsidian/') || rel === '.obsidian') return true;
+  if (rel.includes('/.obsidian/') || rel.startsWith('.obsidian/') || rel === '.obsidian')
+    return true;
   if (rel.includes('/.trash/') || rel.startsWith('.trash/') || rel === '.trash') return true;
   for (const p of patterns) {
     if (p.test(rel)) return true;

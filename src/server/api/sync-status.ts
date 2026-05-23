@@ -35,9 +35,7 @@ export function syncStatusRouter(): Router {
     ).c;
 
     const tombstones = (
-      db
-        .prepare(`SELECT COUNT(*) as c FROM tombstones WHERE finalized = 0`)
-        .get() as { c: number }
+      db.prepare(`SELECT COUNT(*) as c FROM tombstones WHERE finalized = 0`).get() as { c: number }
     ).c;
 
     const deviceRow = db

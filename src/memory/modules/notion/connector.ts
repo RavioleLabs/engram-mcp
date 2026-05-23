@@ -111,20 +111,28 @@ function blockToText(b: Record<string, unknown>): string {
   const text = richText.map((rt) => rt.plain_text).join('');
 
   switch (type) {
-    case 'heading_1': return `# ${text}`;
-    case 'heading_2': return `## ${text}`;
-    case 'heading_3': return `### ${text}`;
-    case 'bulleted_list_item': return `- ${text}`;
-    case 'numbered_list_item': return `1. ${text}`;
-    case 'to_do': return `[${data.checked ? 'x' : ' '}] ${text}`;
+    case 'heading_1':
+      return `# ${text}`;
+    case 'heading_2':
+      return `## ${text}`;
+    case 'heading_3':
+      return `### ${text}`;
+    case 'bulleted_list_item':
+      return `- ${text}`;
+    case 'numbered_list_item':
+      return `1. ${text}`;
+    case 'to_do':
+      return `[${data.checked ? 'x' : ' '}] ${text}`;
     case 'paragraph':
     case 'quote':
-    case 'callout': return text;
+    case 'callout':
+      return text;
     case 'code': {
       const language = (data.language as string) ?? '';
       return `\`\`\`${language}\n${text}\n\`\`\``;
     }
-    default: return text;
+    default:
+      return text;
   }
 }
 
@@ -138,7 +146,14 @@ export async function searchPages(query: string, limit = 25): Promise<NotionPage
         page_size: limit,
       }),
     'search',
-  )) as { results: Array<{ id: string; last_edited_time: string; url: string; properties: Record<string, { title?: Array<{ plain_text: string }>; type?: string }> }> };
+  )) as {
+    results: Array<{
+      id: string;
+      last_edited_time: string;
+      url: string;
+      properties: Record<string, { title?: Array<{ plain_text: string }>; type?: string }>;
+    }>;
+  };
 
   return res.results.map((page) => {
     const titleProp = Object.values(page.properties).find((p) => p.type === 'title');

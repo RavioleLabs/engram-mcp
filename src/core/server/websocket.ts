@@ -21,7 +21,9 @@ export function mountWebSocket(server: HttpServer, store: MemoryStore): void {
     }
   };
 
-  store.events.on('memory.added', (item) => broadcast('memory.added', { id: item.id, type: item.type }));
+  store.events.on('memory.added', (item) =>
+    broadcast('memory.added', { id: item.id, type: item.type }),
+  );
   store.events.on('memory.deleted', (data) => broadcast('memory.deleted', data));
   store.events.on('memory.updated', (data) => broadcast('memory.updated', data));
 

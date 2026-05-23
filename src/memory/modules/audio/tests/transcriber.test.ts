@@ -15,19 +15,15 @@ describe('whisper transcriber (real whisper.cpp)', () => {
     }
   });
 
-  it(
-    'transcribes a short audio file',
-    async () => {
-      if (!fs.existsSync(TEST_AUDIO)) return; // skip when fixture missing
+  it('transcribes a short audio file', async () => {
+    if (!fs.existsSync(TEST_AUDIO)) return; // skip when fixture missing
 
-      const result = await transcribeAudio(TEST_AUDIO, {
-        enabled: true,
-        model: 'tiny.en',
-        language: 'en',
-      });
-      expect(result.full_text.toLowerCase()).toMatch(/hello|test/);
-      expect(result.segments.length).toBeGreaterThan(0);
-    },
-    120_000,
-  );
+    const result = await transcribeAudio(TEST_AUDIO, {
+      enabled: true,
+      model: 'tiny.en',
+      language: 'en',
+    });
+    expect(result.full_text.toLowerCase()).toMatch(/hello|test/);
+    expect(result.segments.length).toBeGreaterThan(0);
+  }, 120_000);
 });

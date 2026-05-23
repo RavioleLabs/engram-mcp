@@ -1,11 +1,5 @@
 // src/sync/ed25519.ts
-import {
-  createPrivateKey,
-  createPublicKey,
-  generateKeyPairSync,
-  sign,
-  verify,
-} from 'node:crypto';
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { monotonicFactory } from 'ulid';
 import { createLogger } from '../logger.js';
@@ -74,10 +68,7 @@ function buildEd25519Pkcs8(seed: Buffer): Buffer {
   // }
   const oid = Buffer.from([0x06, 0x03, 0x2b, 0x65, 0x70]); // OID Ed25519
   const innerOctet = Buffer.concat([Buffer.from([0x04, 0x20]), seed]); // OCTET STRING(seed)
-  const outerOctet = Buffer.concat([
-    Buffer.from([0x04, innerOctet.length]),
-    innerOctet,
-  ]);
+  const outerOctet = Buffer.concat([Buffer.from([0x04, innerOctet.length]), innerOctet]);
   const algSeq = Buffer.concat([Buffer.from([0x30, oid.length]), oid]);
   const version = Buffer.from([0x02, 0x01, 0x00]); // INTEGER 0
   const body = Buffer.concat([version, algSeq, outerOctet]);
@@ -138,9 +129,9 @@ export function opCanonicalBytes(fields: {
  * For higher assurance, this can be replaced with OS keychain calls via keytar.
  */
 export function getOrCreateDeviceIdentity(db: Database.Database): DeviceIdentity {
-  const existing = db
-    .prepare(`SELECT * FROM device_identity LIMIT 1`)
-    .get() as DeviceIdentity | undefined;
+  const existing = db.prepare(`SELECT * FROM device_identity LIMIT 1`).get() as
+    | DeviceIdentity
+    | undefined;
 
   if (existing) return existing;
 

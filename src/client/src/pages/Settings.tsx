@@ -42,7 +42,8 @@ export default function Settings() {
       <section className="space-y-2 border-t border-zinc-800 pt-4">
         <h2 className="text-lg">Reindex</h2>
         <p className="text-sm text-zinc-500">
-          If you changed the embedding provider/model, click this to rebuild the vector index for all stored memories. This may take several minutes for large memory stores.
+          If you changed the embedding provider/model, click this to rebuild the vector index for
+          all stored memories. This may take several minutes for large memory stores.
         </p>
         <button
           className="px-4 py-2 bg-orange-500 text-white rounded"

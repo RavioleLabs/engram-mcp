@@ -58,7 +58,8 @@ export function buildDriveTools(store: MemoryStore, config: EngramConfig): MCPTo
     },
     {
       name: 'ingest_drive_file',
-      description: 'Fetch a Drive file by id, transcribe text, index into memory once. No watching.',
+      description:
+        'Fetch a Drive file by id, transcribe text, index into memory once. No watching.',
       inputSchema: {
         type: 'object',
         properties: { file_id: { type: 'string' } },
@@ -77,7 +78,8 @@ export function buildDriveTools(store: MemoryStore, config: EngramConfig): MCPTo
     },
     {
       name: 'watch_drive_file',
-      description: 'Add a Drive file to the watched-sources list. The watcher will re-sync every 15 minutes.',
+      description:
+        'Add a Drive file to the watched-sources list. The watcher will re-sync every 15 minutes.',
       inputSchema: {
         type: 'object',
         properties: { file_id: { type: 'string' } },

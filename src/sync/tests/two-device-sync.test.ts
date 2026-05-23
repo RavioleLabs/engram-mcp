@@ -142,9 +142,9 @@ describe('two-device bidirectional sync', () => {
     alpha.logger.markSent(pending.map((p) => p.op_id));
 
     // Beta should now have the memory in SQLite
-    const row = beta.db
-      .prepare(`SELECT id, content FROM memories WHERE id = ?`)
-      .get(memId) as { id: string; content: string } | undefined;
+    const row = beta.db.prepare(`SELECT id, content FROM memories WHERE id = ?`).get(memId) as
+      | { id: string; content: string }
+      | undefined;
 
     expect(row).toBeDefined();
     expect(row?.id).toBe(memId);
@@ -168,9 +168,9 @@ describe('two-device bidirectional sync', () => {
     await relay.broadcast(pending);
     beta.logger.markSent(pending.map((p) => p.op_id));
 
-    const row = alpha.db
-      .prepare(`SELECT id, content FROM memories WHERE id = ?`)
-      .get(memId) as { id: string; content: string } | undefined;
+    const row = alpha.db.prepare(`SELECT id, content FROM memories WHERE id = ?`).get(memId) as
+      | { id: string; content: string }
+      | undefined;
 
     expect(row).toBeDefined();
     expect(row?.content).toBe('hello from beta');
@@ -213,10 +213,9 @@ describe('two-device bidirectional sync', () => {
       delta: { title: 'alpha-title', tags: ['alpha-tag'] },
     });
     // Apply alpha's own write directly (simulates MemoryStore.setProperties)
-    alpha.db.prepare(`UPDATE memories SET properties_json = ? WHERE id = ?`).run(
-      JSON.stringify({ title: 'alpha-title', tags: ['base', 'alpha-tag'] }),
-      memId,
-    );
+    alpha.db
+      .prepare(`UPDATE memories SET properties_json = ? WHERE id = ?`)
+      .run(JSON.stringify({ title: 'alpha-title', tags: ['base', 'alpha-tag'] }), memId);
 
     // Beta: log + apply locally (simulates MemoryStore write-through)
     beta.logger.append('update_properties', memId, {
@@ -224,10 +223,9 @@ describe('two-device bidirectional sync', () => {
       delta: { title: 'beta-title', tags: ['beta-tag'] },
     });
     // Apply beta's own write directly (simulates MemoryStore.setProperties)
-    beta.db.prepare(`UPDATE memories SET properties_json = ? WHERE id = ?`).run(
-      JSON.stringify({ title: 'beta-title', tags: ['base', 'beta-tag'] }),
-      memId,
-    );
+    beta.db
+      .prepare(`UPDATE memories SET properties_json = ? WHERE id = ?`)
+      .run(JSON.stringify({ title: 'beta-title', tags: ['base', 'beta-tag'] }), memId);
 
     // Cross-broadcast
     const alphaPending = alpha.logger.listPending();

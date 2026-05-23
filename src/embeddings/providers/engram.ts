@@ -37,7 +37,7 @@ export async function embedEngram(text: string, config: EmbeddingsConfig): Promi
   if (!config.apiKey) {
     throw new Error(
       'Engram-hosted embeddings require an apiKey (Pro tier). ' +
-      'Get yours at https://engram-mcp.com/settings, or switch provider to "ollama" in ~/.engram/config.json.',
+        'Get yours at https://engram-mcp.com/settings, or switch provider to "ollama" in ~/.engram/config.json.',
     );
   }
 
@@ -73,7 +73,11 @@ export async function embedEngram(text: string, config: EmbeddingsConfig): Promi
     quota_exhausted_until?: string;
     error?: string;
   } = {};
-  try { data = JSON.parse(body); } catch { /* ignore */ }
+  try {
+    data = JSON.parse(body);
+  } catch {
+    /* ignore */
+  }
 
   // Fallback signal — server says "use local provider"
   if (res.ok && data.used_fallback) {
@@ -87,13 +91,13 @@ export async function embedEngram(text: string, config: EmbeddingsConfig): Promi
     if (res.status === 403 || data.error === 'pro_required') {
       throw new Error(
         'Engram-hosted embeddings require a Pro subscription ($9/mo). ' +
-        'Upgrade at https://engram-mcp.com/billing, or switch provider to "ollama".',
+          'Upgrade at https://engram-mcp.com/billing, or switch provider to "ollama".',
       );
     }
     if (res.status === 402 || data.error === 'quota_exceeded') {
       throw new Error(
         'Engram embedding quota exceeded for this month (block mode). ' +
-        'Change overage_mode in your dashboard, or wait for the next billing cycle.',
+          'Change overage_mode in your dashboard, or wait for the next billing cycle.',
       );
     }
     throw new Error(`Engram embeddings API ${res.status}: ${body.slice(0, 200)}`);
@@ -102,7 +106,7 @@ export async function embedEngram(text: string, config: EmbeddingsConfig): Promi
   if (data.overage_billed) {
     log.warn(
       `Engram embeddings overage billed — ${data.tokens_used} tokens used this request. ` +
-      `Check your usage at https://engram-mcp.com/dashboard.`,
+        `Check your usage at https://engram-mcp.com/dashboard.`,
     );
   }
 

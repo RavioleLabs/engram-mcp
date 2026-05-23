@@ -1,29 +1,20 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
 import { initDb, getDb } from '../db/index.js';
 import { initVectorStore } from '../../vector/store.js';
 import { MemoryStore } from '../../memory/core/store.js';
 import { moduleRegistry } from '../../memory/core/module-registry.js';
 import { createNotesModule } from '../../memory/modules/notes/module.js';
-import {
-  createConversationsModule,
-} from '../../memory/modules/conversations/module.js';
+import { createConversationsModule } from '../../memory/modules/conversations/module.js';
 import { createDriveModule } from '../../memory/modules/drive/module.js';
 import { createNotionModule } from '../../memory/modules/notion/module.js';
 import { createAudioModule } from '../../memory/modules/audio/module.js';
 import { createYoutubeModule } from '../../memory/modules/youtube/module.js';
 import { buildPublicTools } from '../../memory/public/tools.js';
-import {
-  createObsidianModule,
-} from '../../memory/modules/obsidian/module.js';
-import {
-  loadAndRegisterCustomTypes,
-} from '../../memory/modules/_custom/tools.js';
+import { createObsidianModule } from '../../memory/modules/obsidian/module.js';
+import { loadAndRegisterCustomTypes } from '../../memory/modules/_custom/tools.js';
 import { buildWorkspaceTools } from '../../memory/modules/team/tools.js';
 import { ToolRouter } from './tool-router.js';
 import { ENGRAM_INSTRUCTIONS } from './instructions.js';
@@ -42,20 +33,39 @@ const log = createLogger('mcp-server');
 
 export interface EngramAlgorithms {
   /** Smart findRelated: wikilinks + semantic search with dedup. */
-  findRelated?: (store: MemoryStore, id: string, limit: number) => Promise<import('../../types.js').SearchResult[]>;
+  findRelated?: (
+    store: MemoryStore,
+    id: string,
+    limit: number,
+  ) => Promise<import('../../types.js').SearchResult[]>;
   /** Smart searchAll: per-type weighting, recency boost, MMR diversification. */
-  searchAll?: (store: MemoryStore, query: string, limit: number, types?: string[]) => Promise<Array<{ id: string; type: string; score: number; snippet: string; title?: string }>>;
+  searchAll?: (
+    store: MemoryStore,
+    query: string,
+    limit: number,
+    types?: string[],
+  ) => Promise<Array<{ id: string; type: string; score: number; snippet: string; title?: string }>>;
   /** Semantic-boundary chunking via local Ollama topic-shift detection. */
-  chunkText?: (text: string, opts?: import('../../memory/core/chunker.js').ChunkOptions) => string[] | Promise<string[]>;
+  chunkText?: (
+    text: string,
+    opts?: import('../../memory/core/chunker.js').ChunkOptions,
+  ) => string[] | Promise<string[]>;
   /** Pairwise cosine semantic edges for memory graph (capped at 50 nodes). */
-  graphSemanticEdges?: (store: MemoryStore, nodeIds: string[]) => Promise<Array<import('../../webapp/api/graph.js').GraphEdge>>;
+  graphSemanticEdges?: (
+    store: MemoryStore,
+    nodeIds: string[],
+  ) => Promise<Array<import('../../webapp/api/graph.js').GraphEdge>>;
 }
 
 export interface EngramPrompts {
   /** Full 5-field extraction system prompt (title, tags, sentiment, action_required, summary). */
   extractionSystemPrompt?: string;
   /** Verbose 4-field suggest-properties instruction template. */
-  suggestPropertiesInstruction?: (memoryId: string, content: string, currentProps: object) => string;
+  suggestPropertiesInstruction?: (
+    memoryId: string,
+    content: string,
+    currentProps: object,
+  ) => string;
 }
 
 export interface EngramRuntime {
@@ -71,7 +81,10 @@ export interface BuildEngramRuntimeOptions {
   adminMode?: boolean;
 }
 
-export async function buildEngramRuntime(config: EngramConfig, _opts: BuildEngramRuntimeOptions = {}): Promise<EngramRuntime> {
+export async function buildEngramRuntime(
+  config: EngramConfig,
+  _opts: BuildEngramRuntimeOptions = {},
+): Promise<EngramRuntime> {
   initDb(config.dataDir);
   initVectorStore(config.dataDir);
 
@@ -145,17 +158,12 @@ export async function buildEngramRuntime(config: EngramConfig, _opts: BuildEngra
       );
     } else {
       try {
-        const masterKey = await deriveMasterKey(
-          passphrase,
-          config.engramAccount.masterKeySalt,
-        );
+        const masterKey = await deriveMasterKey(passphrase, config.engramAccount.masterKeySalt);
         const poller = startTransitPoller({ store, config, masterKey });
         pollerStop = poller.stop;
         log.info('Cloud transit poller activated');
       } catch (e) {
-        log.error(
-          `Failed to start transit poller: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        log.error(`Failed to start transit poller: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
   }
@@ -227,9 +235,7 @@ export async function buildEngramRuntime(config: EngramConfig, _opts: BuildEngra
           cloudBaseUrl: config.sync.cloudBaseUrl,
         });
       } catch (e) {
-        log.error(
-          `Failed to start sync: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        log.error(`Failed to start sync: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
   }
@@ -247,7 +253,7 @@ export async function buildEngramRuntime(config: EngramConfig, _opts: BuildEngra
   try {
     const privatePath = new URL('../../private/index.js', import.meta.url).href;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = await import(/* @vite-ignore */ privatePath) as any;
+    const mod = (await import(/* @vite-ignore */ privatePath)) as any;
     await (mod.registerPrivateExtensions as (r: EngramRuntime) => Promise<void>)(runtime);
     log.info('Private extensions loaded');
   } catch {

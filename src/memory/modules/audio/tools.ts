@@ -32,7 +32,9 @@ export function buildAudioTools(store: MemoryStore, config: EngramConfig): MCPTo
         const item = buildAudioItem({ audioPath, transcript, embeddingModel });
         await store.insert(item);
         log.info(
-          `Ingested audio ${audioPath} as memory ${item.id} (${transcript.segments.length} segments, ${transcript.duration.toFixed(1)}s)`,
+          `Ingested audio ${audioPath} as memory ${item.id} (${
+            transcript.segments.length
+          } segments, ${transcript.duration.toFixed(1)}s)`,
         );
         return {
           id: item.id,
@@ -49,8 +51,15 @@ export function buildAudioTools(store: MemoryStore, config: EngramConfig): MCPTo
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Natural language query to search audio transcripts.' },
-          limit: { type: 'number', default: 10, description: 'Maximum number of results to return.' },
+          query: {
+            type: 'string',
+            description: 'Natural language query to search audio transcripts.',
+          },
+          limit: {
+            type: 'number',
+            default: 10,
+            description: 'Maximum number of results to return.',
+          },
         },
         required: ['query'],
       },

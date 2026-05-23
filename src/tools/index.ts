@@ -49,7 +49,7 @@ export async function registerAllTools(runtime: RegisterAllToolsInput): Promise<
   try {
     const privatePath = new URL('../private/index.js', import.meta.url).href;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = await import(/* @vite-ignore */ privatePath) as any;
+    const mod = (await import(/* @vite-ignore */ privatePath)) as any;
     await (mod.registerPrivateExtensions as (ctx: typeof runtime) => Promise<void>)(runtime);
     log.info('Private extensions loaded');
   } catch {

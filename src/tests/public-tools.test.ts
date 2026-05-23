@@ -101,12 +101,14 @@ describe('public tools — full 24-tool surface', () => {
 
   it('remember writes a memory and returns id + wikilinks_extracted', async () => {
     const tools = buildPublicTools(store, mockConfig);
-    const result = (await tools.find((t) => t.name === 'remember')!.handler({
-      content: 'Discussed [[Atlas]] project with [[Alice]]',
-      title: 'Atlas kickoff',
-      tags: ['atlas', 'alice'],
-      type: 'notes',
-    })) as { id: string; wikilinks_extracted: string[] };
+    const result = (await tools
+      .find((t) => t.name === 'remember')!
+      .handler({
+        content: 'Discussed [[Atlas]] project with [[Alice]]',
+        title: 'Atlas kickoff',
+        tags: ['atlas', 'alice'],
+        type: 'notes',
+      })) as { id: string; wikilinks_extracted: string[] };
     expect(result.id).toBeTruthy();
     expect(result.wikilinks_extracted).toEqual(expect.arrayContaining(['Atlas', 'Alice']));
     const stored = store.getById(result.id);
@@ -116,10 +118,12 @@ describe('public tools — full 24-tool surface', () => {
 
   it('recall returns semantic hits', async () => {
     const tools = buildPublicTools(store, mockConfig);
-    const results = (await tools.find((t) => t.name === 'recall')!.handler({
-      query: 'coding typescript',
-      limit: 5,
-    })) as Array<{ id: string; type: string; score: number }>;
+    const results = (await tools
+      .find((t) => t.name === 'recall')!
+      .handler({
+        query: 'coding typescript',
+        limit: 5,
+      })) as Array<{ id: string; type: string; score: number }>;
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].type).toBe('notes');
   });
@@ -171,11 +175,13 @@ describe('public tools — full 24-tool surface', () => {
       related_ids: [],
       embedding_model: 'm',
     });
-    const result = (await tools.find((t) => t.name === 'update')!.handler({
-      id,
-      title: 'Renamed',
-      tags: ['important'],
-    })) as { updated: boolean };
+    const result = (await tools
+      .find((t) => t.name === 'update')!
+      .handler({
+        id,
+        title: 'Renamed',
+        tags: ['important'],
+      })) as { updated: boolean };
     expect(result.updated).toBe(true);
     expect(store.getById(id)?.properties.title).toBe('Renamed');
     expect(store.getById(id)?.properties.tags).toContain('important');
@@ -227,17 +233,21 @@ describe('public tools — full 24-tool surface', () => {
       related_ids: [],
       embedding_model: 'm',
     });
-    const result = (await tools.find((t) => t.name === 'relate')!.handler({
-      id: bId,
-    })) as Array<{ id: string }>;
+    const result = (await tools
+      .find((t) => t.name === 'relate')!
+      .handler({
+        id: bId,
+      })) as Array<{ id: string }>;
     expect(result.some((r) => r.id === aId)).toBe(true);
   });
 
   it('recent returns latest memories sorted by date', async () => {
     const tools = buildPublicTools(store, mockConfig);
-    const result = (await tools.find((t) => t.name === 'recent')!.handler({
-      limit: 5,
-    })) as Array<{ id: string; type: string; created_at: string }>;
+    const result = (await tools
+      .find((t) => t.name === 'recent')!
+      .handler({
+        limit: 5,
+      })) as Array<{ id: string; type: string; created_at: string }>;
     expect(result.length).toBeGreaterThan(0);
     expect(result[0].type).toBeTruthy();
   });
@@ -248,10 +258,12 @@ describe('public tools — full 24-tool surface', () => {
     const mdPath = path.join(os.tmpdir(), `test-${ulid()}.md`);
     fs.writeFileSync(mdPath, '# Test Note\n\nThis is content for ingest test.');
     try {
-      const result = (await tools.find((t) => t.name === 'ingest')!.handler({
-        uri: mdPath,
-        tags: ['test'],
-      })) as { id: string; type: string; title: string };
+      const result = (await tools
+        .find((t) => t.name === 'ingest')!
+        .handler({
+          uri: mdPath,
+          tags: ['test'],
+        })) as { id: string; type: string; title: string };
       expect(result.id).toBeTruthy();
       expect(result.type).toBe('notes');
     } finally {
@@ -274,9 +286,11 @@ describe('public tools — full 24-tool surface', () => {
       related_ids: [],
       embedding_model: 'm',
     });
-    const result = (await tools.find((t) => t.name === 'suggest_properties')!.handler({
-      id,
-    })) as {
+    const result = (await tools
+      .find((t) => t.name === 'suggest_properties')!
+      .handler({
+        id,
+      })) as {
       memory_id: string;
       type: string;
       content: string;
@@ -292,9 +306,11 @@ describe('public tools — full 24-tool surface', () => {
 
   it('suggest_properties returns error for unknown id', async () => {
     const tools = buildPublicTools(store, mockConfig);
-    const result = (await tools.find((t) => t.name === 'suggest_properties')!.handler({
-      id: 'nonexistent',
-    })) as { error: string };
+    const result = (await tools
+      .find((t) => t.name === 'suggest_properties')!
+      .handler({
+        id: 'nonexistent',
+      })) as { error: string };
     expect(result.error).toBe('not_found');
   });
 });

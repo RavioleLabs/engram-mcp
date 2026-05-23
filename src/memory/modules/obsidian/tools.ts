@@ -9,10 +9,7 @@ import { sourceRegistry } from '../../core/source-registry.js';
 
 const log = createLogger('obsidian:tools');
 
-export function buildObsidianTools(
-  store: MemoryStore,
-  config: EngramConfig,
-): MCPToolDefinition[] {
+export function buildObsidianTools(store: MemoryStore, config: EngramConfig): MCPToolDefinition[] {
   const embeddingModel = `${config.embeddings.provider}/${config.embeddings.model}`;
 
   return [

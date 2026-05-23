@@ -9,9 +9,7 @@ export function MemoryCard({ memory }: { memory: MemoryRow }) {
         <span className="uppercase">{memory.type}</span>
         <span>{date}</span>
       </div>
-      {memory.properties.title && (
-        <h3 className="font-medium mb-1">{memory.properties.title}</h3>
-      )}
+      {memory.properties.title && <h3 className="font-medium mb-1">{memory.properties.title}</h3>}
       <p className="text-sm text-zinc-300">{memory.content_preview}</p>
       {memory.properties.tags && memory.properties.tags.length > 0 && (
         <div className="mt-2 flex gap-1 flex-wrap">

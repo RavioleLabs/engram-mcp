@@ -160,9 +160,7 @@ export interface StartPairingOptions {
 export async function startPairing(opts: StartPairingOptions = {}): Promise<PairingResult> {
   const baseUrl = opts.baseUrl ?? ENGRAM_APP_BASE;
   const pairingToken = generatePairingToken();
-  const callbackUrl = encodeURIComponent(
-    `http://localhost:${CALLBACK_PORT}/callback`,
-  );
+  const callbackUrl = encodeURIComponent(`http://localhost:${CALLBACK_PORT}/callback`);
   const pairingUrl = `${baseUrl}/pair/${pairingToken}?callback=${callbackUrl}`;
 
   /* eslint-disable no-console */

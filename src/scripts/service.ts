@@ -24,13 +24,19 @@ import { homedir, platform } from 'os';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const HOME          = homedir();
-const PLATFORM      = platform(); // 'darwin' | 'linux' | 'win32'
-const LABEL         = 'com.ravolelabs.engram';
-const PLIST_PATH    = join(HOME, 'Library', 'LaunchAgents', `${LABEL}.plist`);
-const SYSTEMD_PATH  = join(HOME, '.config', 'systemd', 'user', 'engram.service');
-const LOG_DIR       = join(HOME, '.engram', 'logs');
-const TEMPLATE_DIR  = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'services');
+const HOME = homedir();
+const PLATFORM = platform(); // 'darwin' | 'linux' | 'win32'
+const LABEL = 'com.ravolelabs.engram';
+const PLIST_PATH = join(HOME, 'Library', 'LaunchAgents', `${LABEL}.plist`);
+const SYSTEMD_PATH = join(HOME, '.config', 'systemd', 'user', 'engram.service');
+const LOG_DIR = join(HOME, '.engram', 'logs');
+const TEMPLATE_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'scripts',
+  'services',
+);
 
 // Resolve binary path: prefer the installed binary on PATH, fall back to dist/
 function resolveBinaryPath(): string {
@@ -188,15 +194,15 @@ const windows = {
     const candidate = 'C:\\nssm\\nssm.exe';
     if (existsSync(candidate)) return candidate;
     console.error(
-      'NSSM not found. Install from https://nssm.cc/download and add to PATH, or run install.ps1 again.'
+      'NSSM not found. Install from https://nssm.cc/download and add to PATH, or run install.ps1 again.',
     );
     process.exit(1);
   },
 
   install(): void {
-    const nssm    = windows.requireNssm();
-    const binary  = resolveBinaryPath();
-    const logDir  = join(HOME, '.engram', 'logs');
+    const nssm = windows.requireNssm();
+    const binary = resolveBinaryPath();
+    const logDir = join(HOME, '.engram', 'logs');
     mkdirSync(logDir, { recursive: true });
 
     run(`"${nssm}" stop "${SERVICE_NAME}" 2>nul`);
@@ -251,27 +257,43 @@ const VALID_ACTIONS: Action[] = ['start', 'stop', 'restart', 'status', 'install'
 const action = process.argv[2] as Action | undefined;
 
 if (!action || !VALID_ACTIONS.includes(action)) {
-  console.error(
-    `Usage: engram-mcp-service <${VALID_ACTIONS.join('|')}>`
-  );
+  console.error(`Usage: engram-mcp-service <${VALID_ACTIONS.join('|')}>`);
   process.exit(1);
 }
 
 function dispatch(impl: typeof macos | typeof linux | typeof windows): void {
   switch (action) {
-    case 'start':     impl.start();     break;
-    case 'stop':      impl.stop();      break;
-    case 'restart':   impl.restart();   break;
-    case 'status':    impl.status();    break;
-    case 'install':   impl.install();   break;
-    case 'uninstall': impl.uninstall(); break;
+    case 'start':
+      impl.start();
+      break;
+    case 'stop':
+      impl.stop();
+      break;
+    case 'restart':
+      impl.restart();
+      break;
+    case 'status':
+      impl.status();
+      break;
+    case 'install':
+      impl.install();
+      break;
+    case 'uninstall':
+      impl.uninstall();
+      break;
   }
 }
 
 switch (PLATFORM) {
-  case 'darwin':  dispatch(macos);   break;
-  case 'linux':   dispatch(linux);   break;
-  case 'win32':   dispatch(windows); break;
+  case 'darwin':
+    dispatch(macos);
+    break;
+  case 'linux':
+    dispatch(linux);
+    break;
+  case 'win32':
+    dispatch(windows);
+    break;
   default:
     console.error(`Unsupported platform: ${PLATFORM}`);
     process.exit(1);

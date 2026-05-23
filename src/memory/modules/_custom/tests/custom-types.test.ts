@@ -14,7 +14,12 @@ import type { EngramConfig } from '../../../../config/schema.js';
 
 const config: EngramConfig = {
   dataDir: '~/.engram',
-  embeddings: { provider: 'ollama' as const, baseUrl: 'http://localhost:11434', model: 'nomic-embed-text', dimensions: 768 },
+  embeddings: {
+    provider: 'ollama' as const,
+    baseUrl: 'http://localhost:11434',
+    model: 'nomic-embed-text',
+    dimensions: 768,
+  },
   drive: undefined,
   notion: undefined,
   propertyExtraction: {
@@ -62,38 +67,36 @@ describe('custom types e2e', () => {
   });
 
   it('rejects reserved names', () => {
-    expect(() =>
-      createCustomType({ type_name: 'notes', display_name: 'Notes' }),
-    ).toThrow(/reserved/);
+    expect(() => createCustomType({ type_name: 'notes', display_name: 'Notes' })).toThrow(
+      /reserved/,
+    );
   });
 
-  it(
-    'create_custom_type registers add_X / search_X tools live',
-    async () => {
-      const tools = buildCustomTypeTools(store, config, router);
-      const result = (await tools.find((t) => t.name === 'create_custom_type')!.handler({
+  it('create_custom_type registers add_X / search_X tools live', async () => {
+    const tools = buildCustomTypeTools(store, config, router);
+    const result = (await tools
+      .find((t) => t.name === 'create_custom_type')!
+      .handler({
         type_name: 'recipes',
         display_name: 'Recipes',
       })) as { type_name: string; tools: string[] };
-      expect(result.tools).toContain('add_recipes');
-      expect(result.tools).toContain('search_recipes');
+    expect(result.tools).toContain('add_recipes');
+    expect(result.tools).toContain('search_recipes');
 
-      // The tool router now has them
-      const addRecipe = router.list().find((t) => t.name === 'add_recipes')!;
-      const searchRecipe = router.list().find((t) => t.name === 'search_recipes')!;
+    // The tool router now has them
+    const addRecipe = router.list().find((t) => t.name === 'add_recipes')!;
+    const searchRecipe = router.list().find((t) => t.name === 'search_recipes')!;
 
-      await addRecipe.handler({
-        content:
-          'Pasta carbonara: pancetta, eggs, pecorino, black pepper. Tossed off-heat to keep eggs creamy.',
-        title: 'Carbonara',
-      });
-      const hits = (await searchRecipe.handler({ query: 'pasta eggs cheese' })) as Array<{
-        id: string;
-      }>;
-      expect(hits.length).toBeGreaterThan(0);
-    },
-    30_000,
-  );
+    await addRecipe.handler({
+      content:
+        'Pasta carbonara: pancetta, eggs, pecorino, black pepper. Tossed off-heat to keep eggs creamy.',
+      title: 'Carbonara',
+    });
+    const hits = (await searchRecipe.handler({ query: 'pasta eggs cheese' })) as Array<{
+      id: string;
+    }>;
+    expect(hits.length).toBeGreaterThan(0);
+  }, 30_000);
 
   it('loadAndRegisterCustomTypes restores types at boot', async () => {
     createCustomType({ type_name: 'recipes', display_name: 'Recipes' });

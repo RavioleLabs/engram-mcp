@@ -56,9 +56,7 @@ async function ensureSodium(): Promise<void> {
 // N=2^14 (16 MiB total with r=8), r=8, p=1.
 // OpenSSL default maxmem is 32 MiB; 128*N*r = 128*16384*8 = 16 MiB — fits comfortably.
 // Override via env for stronger hardening: ENGRAM_SCRYPT_N (power of 2, max 32768).
-const SCRYPT_N = process.env.ENGRAM_SCRYPT_N
-  ? parseInt(process.env.ENGRAM_SCRYPT_N, 10)
-  : 1 << 14; // 16384 → 16 MiB
+const SCRYPT_N = process.env.ENGRAM_SCRYPT_N ? parseInt(process.env.ENGRAM_SCRYPT_N, 10) : 1 << 14; // 16384 → 16 MiB
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 const SALT_BYTES = 32;
@@ -89,15 +87,10 @@ export async function generateMasterKeySalt(): Promise<string> {
  * scrypt is memory-hard (equivalent security properties to Argon2id).
  * The derived key is held in process memory only — never written to disk.
  */
-export async function deriveMasterKey(
-  passphrase: string,
-  saltHex: string,
-): Promise<Uint8Array> {
+export async function deriveMasterKey(passphrase: string, saltHex: string): Promise<Uint8Array> {
   const salt = Buffer.from(saltHex, 'hex');
   if (salt.length !== SALT_BYTES) {
-    throw new Error(
-      `Invalid salt length: expected ${SALT_BYTES}, got ${salt.length}`,
-    );
+    throw new Error(`Invalid salt length: expected ${SALT_BYTES}, got ${salt.length}`);
   }
   const keyBuf = (await scryptAsync(passphrase, salt, KEY_BYTES, {
     N: SCRYPT_N,
@@ -135,10 +128,7 @@ export async function encryptBlob(
  * Input: nonce (24 bytes) || ciphertext (as produced by encryptBlob).
  * Throws if authentication fails (tampered or wrong key).
  */
-export async function decryptBlob(
-  wire: Uint8Array,
-  masterKey: Uint8Array,
-): Promise<Uint8Array> {
+export async function decryptBlob(wire: Uint8Array, masterKey: Uint8Array): Promise<Uint8Array> {
   await ensureSodium();
   const NONCE_BYTES = sodium.crypto_secretbox_NONCEBYTES; // 24
   if (wire.length <= NONCE_BYTES) {

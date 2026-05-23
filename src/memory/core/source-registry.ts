@@ -44,9 +44,7 @@ class SourceRegistry {
    */
   add(input: AddSourceInput): string {
     const existing = getDb()
-      .prepare(
-        `SELECT id FROM watched_sources WHERE module_id = ? AND external_id = ? LIMIT 1`,
-      )
+      .prepare(`SELECT id FROM watched_sources WHERE module_id = ? AND external_id = ? LIMIT 1`)
       .get(input.module_id, input.external_id) as { id: string } | undefined;
     if (existing) return existing.id;
 
@@ -73,9 +71,7 @@ class SourceRegistry {
    */
   addWithStatus(input: AddSourceInput): { id: string; alreadyExists: boolean } {
     const existing = getDb()
-      .prepare(
-        `SELECT id FROM watched_sources WHERE module_id = ? AND external_id = ? LIMIT 1`,
-      )
+      .prepare(`SELECT id FROM watched_sources WHERE module_id = ? AND external_id = ? LIMIT 1`)
       .get(input.module_id, input.external_id) as { id: string } | undefined;
     if (existing) return { id: existing.id, alreadyExists: true };
     const id = this.add(input);

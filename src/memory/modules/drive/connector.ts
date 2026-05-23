@@ -41,7 +41,9 @@ export async function downloadFileContent(
 
   let url: string;
   if (EXPORTABLE[mimeType]) {
-    url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(EXPORTABLE[mimeType])}`;
+    url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+      fileId,
+    )}/export?mimeType=${encodeURIComponent(EXPORTABLE[mimeType])}`;
   } else if (mimeType.startsWith('text/')) {
     url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
   } else {

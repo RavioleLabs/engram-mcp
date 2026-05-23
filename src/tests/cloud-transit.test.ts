@@ -8,11 +8,7 @@ import { initDb, closeDb, getDb } from '../db/index.js';
 import { initVectorStore } from '../vector/store.js';
 import { MemoryStore } from '../memory/core/store.js';
 import { saveTokens } from '../cloud/auth.js';
-import {
-  generateMasterKeySalt,
-  deriveMasterKey,
-  encryptBlob,
-} from '../cloud/crypto.js';
+import { generateMasterKeySalt, deriveMasterKey, encryptBlob } from '../cloud/crypto.js';
 import { pollOnce, type TransitItem } from '../cloud/transit-poller.js';
 import type { EngramConfig } from '../config/schema.js';
 

@@ -1,9 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Express, Request, Response, NextFunction } from 'express';
 import express from 'express';
 import { randomBytes } from 'crypto';
@@ -106,7 +103,9 @@ export function mountMcpHttp(app: Express, router: ToolRouter): void {
     }
   });
 
-  log.info('Mounted MCP HTTP transport at POST /mcp (Bearer token required, see ~/.engram/http-token)');
+  log.info(
+    'Mounted MCP HTTP transport at POST /mcp (Bearer token required, see ~/.engram/http-token)',
+  );
 }
 
 function timingSafeEqual(a: string, b: string): boolean {

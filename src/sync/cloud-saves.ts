@@ -99,9 +99,9 @@ export async function takeSnapshot(): Promise<{ id: string; sizeBytes: number }>
     log.info(`DB copied to ${dbCopyPath}`);
 
     // 2. Get current Lamport timestamp from ops_log
-    const lamportRow = db
-      .prepare(`SELECT MAX(lamport_ts) as max_ts FROM ops_log`)
-      .get() as { max_ts: number | null } | undefined;
+    const lamportRow = db.prepare(`SELECT MAX(lamport_ts) as max_ts FROM ops_log`).get() as
+      | { max_ts: number | null }
+      | undefined;
     const lamportTs = lamportRow?.max_ts ?? 0;
 
     // 3. Read DB bytes
@@ -240,7 +240,11 @@ export async function decryptBuffer(encrypted: Buffer, key: Buffer): Promise<Buf
     new Uint8Array(key),
   );
 
-  const result = sodium.crypto_secretstream_xchacha20poly1305_pull(state, new Uint8Array(cipher), null);
+  const result = sodium.crypto_secretstream_xchacha20poly1305_pull(
+    state,
+    new Uint8Array(cipher),
+    null,
+  );
   if (!result) throw new Error('Snapshot decryption failed — wrong key or corrupted data');
 
   return Buffer.from(result.message);

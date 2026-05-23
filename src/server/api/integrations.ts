@@ -196,14 +196,17 @@ export function integrationsApi(getConfig: () => EngramConfig): Router {
     try {
       const config = getConfig();
       if (!config.drive) {
-        res.status(400).json({ error: 'Drive credentials not configured. PATCH /api/integrations/drive first.' });
+        res.status(400).json({
+          error: 'Drive credentials not configured. PATCH /api/integrations/drive first.',
+        });
         return;
       }
       const flow = await startDriveOAuthFlow(config);
       // Don't await the callback here — just return the URL so the browser can open it
       res.json({
         auth_url: flow.authUrl,
-        instructions: 'Open the auth_url in your browser and authorize access. Poll GET /api/integrations/status until drive.connected becomes true.',
+        instructions:
+          'Open the auth_url in your browser and authorize access. Poll GET /api/integrations/status until drive.connected becomes true.',
       });
       // Background: resolve and discard (tokens saved to DB by oauth.ts)
       flow.waitForCallback.catch((e: unknown) => {
@@ -220,13 +223,16 @@ export function integrationsApi(getConfig: () => EngramConfig): Router {
     try {
       const config = getConfig();
       if (!config.notion) {
-        res.status(400).json({ error: 'Notion credentials not configured. PATCH /api/integrations/notion first.' });
+        res.status(400).json({
+          error: 'Notion credentials not configured. PATCH /api/integrations/notion first.',
+        });
         return;
       }
       const flow = await startNotionOAuthFlow(config);
       res.json({
         auth_url: flow.authUrl,
-        instructions: 'Open the auth_url in your browser and authorize access. Poll GET /api/integrations/status until notion.connected becomes true.',
+        instructions:
+          'Open the auth_url in your browser and authorize access. Poll GET /api/integrations/status until notion.connected becomes true.',
       });
       flow.waitForCallback.catch((e: unknown) => {
         log.warn(`Notion OAuth callback error: ${e instanceof Error ? e.message : String(e)}`);

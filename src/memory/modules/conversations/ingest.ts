@@ -7,7 +7,7 @@ export interface ExchangeInput {
   user_message: string;
   assistant_message: string;
   source_id?: string;
-  agent?: string;             // e.g. "claude-code", "cursor"
+  agent?: string; // e.g. "claude-code", "cursor"
   properties?: Partial<MemoryProperties>;
 }
 
@@ -48,4 +48,3 @@ export function buildExchangeItem(input: ExchangeInput, embeddingModel: string):
 function formatExchange(userMsg: string, assistantMsg: string): string {
   return `User: ${userMsg.trim()}\n\nAssistant: ${assistantMsg.trim()}`;
 }
-

@@ -31,12 +31,11 @@ const CONFIG_PATH = path.join(ENGRAM_DIR, 'config.json');
 async function main() {
   // Parse --base-url flag
   const baseUrlArg = process.argv.indexOf('--base-url');
-  const baseUrl =
-    baseUrlArg !== -1 ? process.argv[baseUrlArg + 1] : 'https://engram-mcp.com';
+  const baseUrl = baseUrlArg !== -1 ? process.argv[baseUrlArg + 1] : 'https://engram-mcp.com';
   const apiBaseUrl =
     baseUrlArg !== -1
-      ? (process.argv[baseUrlArg + 1]?.replace('engram-mcp.com', 'api.engram-mcp.com') ??
-          'https://api.engram-mcp.com')
+      ? process.argv[baseUrlArg + 1]?.replace('engram-mcp.com', 'api.engram-mcp.com') ??
+        'https://api.engram-mcp.com'
       : 'https://api.engram-mcp.com';
 
   // Load config to get dataDir

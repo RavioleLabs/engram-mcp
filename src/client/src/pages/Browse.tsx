@@ -16,10 +16,7 @@ export default function Browse() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Browse</h1>
       <div className="flex gap-2 flex-wrap">
-        <button
-          className={pill(type === undefined)}
-          onClick={() => setType(undefined)}
-        >
+        <button className={pill(type === undefined)} onClick={() => setType(undefined)}>
           All
         </button>
         {types.data?.map((t) => (

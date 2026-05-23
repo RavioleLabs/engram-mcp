@@ -59,12 +59,7 @@ describe('scope encryption', () => {
 
     // Recipient unwraps
     const workspaceId = 'TEST01WORKSPACEID01';
-    const unwrapped = await unwrapAndStoreWorkspaceKey(
-      wrapDir,
-      workspaceId,
-      wrappedHex,
-      keypair,
-    );
+    const unwrapped = await unwrapAndStoreWorkspaceKey(wrapDir, workspaceId, wrappedHex, keypair);
     expect(sodium.to_hex(unwrapped)).toBe(sodium.to_hex(teamKey));
 
     // Persisted key matches

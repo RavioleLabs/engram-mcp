@@ -100,7 +100,11 @@ export function loadTokens(): EngramTokens | null {
     const acc = raw.engramAccount;
     if (!acc?.jwt || !acc.apiKey) return null;
     let expiresAt = 0;
-    try { expiresAt = parseJwtExpiry(acc.jwt); } catch { /* leave 0 — caller will refresh */ }
+    try {
+      expiresAt = parseJwtExpiry(acc.jwt);
+    } catch {
+      /* leave 0 — caller will refresh */
+    }
     const migrated: EngramTokens = {
       jwt: acc.jwt,
       refreshToken: acc.refreshToken ?? '',
@@ -111,7 +115,9 @@ export function loadTokens(): EngramTokens | null {
     saveTokens(migrated);
     return migrated;
   } catch (e) {
-    log.warn(`Token migration from config.json failed: ${e instanceof Error ? e.message : String(e)}`);
+    log.warn(
+      `Token migration from config.json failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
     return null;
   }
 }

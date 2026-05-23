@@ -36,7 +36,13 @@ export function sourcesApi(store?: MemoryStore): Router {
       const { importPlaylist } = await import('../../memory/modules/youtube/watcher.js');
       const { loadConfig } = await import('../../config/index.js');
       const config = loadConfig();
-      const result = await importPlaylist(playlistUrl, store, config.embeddings, config.youtube, limit ?? 50);
+      const result = await importPlaylist(
+        playlistUrl,
+        store,
+        config.embeddings,
+        config.youtube,
+        limit ?? 50,
+      );
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: e instanceof Error ? e.message : String(e) });

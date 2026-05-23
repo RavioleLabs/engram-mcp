@@ -6,7 +6,8 @@ import { listCustomTypes } from '../../memory/modules/_custom/persistence.js';
 export function typesApi(): Router {
   const r = Router();
   r.get('/', (_req, res) => {
-    const builtins = moduleRegistry.list()
+    const builtins = moduleRegistry
+      .list()
       .filter((m) => !m.isCustom)
       .map((m) => ({ id: m.id, display_name: m.displayName, is_custom: false }));
     const customs = listCustomTypes().map((d) => ({

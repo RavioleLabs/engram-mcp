@@ -17,14 +17,20 @@ function loadVersion(): string {
     const here = path.dirname(fileURLToPath(import.meta.url));
     for (const candidate of ['../../../package.json', '../../package.json', '../package.json']) {
       try {
-        const pkg = JSON.parse(readFileSync(path.join(here, candidate), 'utf-8')) as { version?: string };
+        const pkg = JSON.parse(readFileSync(path.join(here, candidate), 'utf-8')) as {
+          version?: string;
+        };
         if (pkg.version) {
           cachedVersion = pkg.version;
           return cachedVersion;
         }
-      } catch { /* try next */ }
+      } catch {
+        /* try next */
+      }
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   cachedVersion = 'unknown';
   return cachedVersion;
 }

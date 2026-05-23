@@ -14,7 +14,10 @@ export default function Home() {
       <div className="grid grid-cols-3 gap-4">
         <Stat label="Memory types" value={types.data?.length ?? '…'} />
         <Stat label="Sources watched" value={sources.data?.length ?? '…'} />
-        <Stat label="Recent items (24h)" value={recent.data?.filter((m) => Date.now() - m.created_at < 86_400_000).length ?? '…'} />
+        <Stat
+          label="Recent items (24h)"
+          value={recent.data?.filter((m) => Date.now() - m.created_at < 86_400_000).length ?? '…'}
+        />
       </div>
       <section>
         <h2 className="text-lg mb-3">Recent</h2>

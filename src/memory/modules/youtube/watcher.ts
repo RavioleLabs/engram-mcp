@@ -171,7 +171,9 @@ export async function importPlaylist(
     (
       db
         .prepare(
-          `SELECT source_id FROM memories WHERE type = 'youtube' AND source_id IN (${unique.map(() => '?').join(',')})`,
+          `SELECT source_id FROM memories WHERE type = 'youtube' AND source_id IN (${unique
+            .map(() => '?')
+            .join(',')})`,
         )
         .all(...unique) as Array<{ source_id: string }>
     ).map((r) => r.source_id),
@@ -192,9 +194,7 @@ export async function importPlaylist(
       });
       imported++;
     } catch (e) {
-      log.warn(
-        `Failed to ingest ${videoId}: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      log.warn(`Failed to ingest ${videoId}: ${e instanceof Error ? e.message : String(e)}`);
       skipped++;
     }
   }

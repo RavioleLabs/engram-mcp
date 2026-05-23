@@ -40,7 +40,10 @@ export function startWebapp(options: WebappOptions): { app: Express; server: htt
   // Permissive CORS for localhost dev (any localhost port)
   app.use((req, res, next) => {
     const origin = req.headers.origin ?? '';
-    if (/^https?:\/\/localhost(:\d+)?$/.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
+    if (
+      /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
+      /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
+    ) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
@@ -77,7 +80,10 @@ export function startWebapp(options: WebappOptions): { app: Express; server: htt
   app.use('/api/settings', settingsApi());
   app.use('/api/reindex', reindexApi());
   app.use('/api/graph', graphApi(options.store));
-  app.use('/api/integrations', integrationsApi(() => loadConfig()));
+  app.use(
+    '/api/integrations',
+    integrationsApi(() => loadConfig()),
+  );
   app.use('/api/version', versionApi());
   app.use(syncStatusRouter());
 
@@ -95,7 +101,8 @@ export function startWebapp(options: WebappOptions): { app: Express; server: htt
 
   // Static client (production)
   const clientDist =
-    options.clientDistDir ?? path.join(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
+    options.clientDistDir ??
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
   app.use(express.static(clientDist));
   app.get(/^(?!\/api|\/mcp|\/ws).*/, (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));

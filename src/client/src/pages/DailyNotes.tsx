@@ -27,7 +27,9 @@ export default function DailyNotes() {
           <button
             key={d}
             onClick={() => setDay(d)}
-            className={`block w-full text-left px-3 py-2 rounded ${day === d ? 'bg-zinc-800' : 'hover:bg-zinc-900'}`}
+            className={`block w-full text-left px-3 py-2 rounded ${
+              day === d ? 'bg-zinc-800' : 'hover:bg-zinc-900'
+            }`}
           >
             <div className="text-sm">{d}</div>
             <div className="text-xs text-zinc-500">

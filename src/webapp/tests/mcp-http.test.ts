@@ -32,10 +32,7 @@ describe('HTTP MCP transport', () => {
     baseUrl = `http://localhost:${port}`;
 
     const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`));
-    client = new Client(
-      { name: 'mcp-http-test', version: '0.0.0' },
-      { capabilities: {} },
-    );
+    client = new Client({ name: 'mcp-http-test', version: '0.0.0' }, { capabilities: {} });
     await client.connect(transport);
   }, 15_000);
 

@@ -66,9 +66,7 @@ function envelopeEncryptShare(share: ShamirShare): string {
   return Buffer.from(share.code).toString('hex');
 }
 
-export async function setupRecoveryShards(
-  input: RecoverySetupInput,
-): Promise<RecoverySetupResult> {
+export async function setupRecoveryShards(input: RecoverySetupInput): Promise<RecoverySetupResult> {
   const { masterKey, trustedEmails, jwt, cloudBaseUrl } = input;
 
   if (masterKey.length !== 32) throw new Error('masterKey must be 32 bytes');

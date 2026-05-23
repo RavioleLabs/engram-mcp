@@ -21,7 +21,8 @@ function loadDisabledTypes(): Set<string> {
   if (!row) return new Set();
   try {
     const parsed = JSON.parse(row.value_json) as unknown;
-    if (Array.isArray(parsed)) return new Set(parsed.filter((x): x is string => typeof x === 'string'));
+    if (Array.isArray(parsed))
+      return new Set(parsed.filter((x): x is string => typeof x === 'string'));
   } catch {
     /* fall through */
   }
@@ -30,9 +31,7 @@ function loadDisabledTypes(): Set<string> {
 
 function saveDisabledTypes(disabled: Set<string>): void {
   getDb()
-    .prepare(
-      'INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)',
-    )
+    .prepare('INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)')
     .run(DISABLED_TYPES_KEY, JSON.stringify([...disabled]), Date.now());
 }
 

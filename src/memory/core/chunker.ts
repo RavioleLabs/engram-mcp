@@ -1,6 +1,6 @@
 export interface ChunkOptions {
-  maxChars?: number;        // soft maximum per chunk; default 1500
-  overlapChars?: number;    // overlap between chunks; default 100
+  maxChars?: number; // soft maximum per chunk; default 1500
+  overlapChars?: number; // overlap between chunks; default 100
 }
 
 export function chunkText(text: string, options: ChunkOptions = {}): string[] {

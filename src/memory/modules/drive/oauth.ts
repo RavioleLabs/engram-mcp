@@ -54,7 +54,9 @@ function saveTokens(t: DriveTokens): void {
     );
 }
 
-export async function startDriveOAuthFlow(config: EngramConfig): Promise<{ authUrl: string; waitForCallback: Promise<DriveTokens> }> {
+export async function startDriveOAuthFlow(
+  config: EngramConfig,
+): Promise<{ authUrl: string; waitForCallback: Promise<DriveTokens> }> {
   if (!config.drive) throw new Error('drive.clientId/clientSecret not configured');
   const { clientId, clientSecret, redirectPort } = config.drive;
   const redirectUri = `http://localhost:${redirectPort}/oauth/callback/drive`;
@@ -109,7 +111,9 @@ export async function startDriveOAuthFlow(config: EngramConfig): Promise<{ authU
         };
         saveTokens(tokens);
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end('<html><body><h2>Connected to Google Drive. You can close this tab.</h2></body></html>');
+        res.end(
+          '<html><body><h2>Connected to Google Drive. You can close this tab.</h2></body></html>',
+        );
         server.close();
         log.info('Drive OAuth completed');
         resolve(tokens);

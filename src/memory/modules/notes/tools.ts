@@ -15,7 +15,8 @@ export function buildNotesTools(store: MemoryStore, config: EngramConfig): MCPTo
           content: { type: 'string', description: 'The note text (verbatim)' },
           title: {
             type: 'string',
-            description: 'Short title summarizing the note (3-7 words). Required for good retrieval.',
+            description:
+              'Short title summarizing the note (3-7 words). Required for good retrieval.',
           },
           tags: {
             type: 'array',
@@ -51,7 +52,7 @@ export function buildNotesTools(store: MemoryStore, config: EngramConfig): MCPTo
     {
       name: 'search_notes',
       description:
-        'Search the user\'s notes by semantic similarity. Returns ranked results with snippets.',
+        "Search the user's notes by semantic similarity. Returns ranked results with snippets.",
       inputSchema: {
         type: 'object',
         properties: {

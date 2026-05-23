@@ -11,7 +11,12 @@ import type { EngramConfig } from '../../../../config/schema.js';
 
 const config: EngramConfig = {
   dataDir: '~/.engram',
-  embeddings: { provider: 'ollama' as const, baseUrl: 'http://localhost:11434', model: 'nomic-embed-text', dimensions: 768 },
+  embeddings: {
+    provider: 'ollama' as const,
+    baseUrl: 'http://localhost:11434',
+    model: 'nomic-embed-text',
+    dimensions: 768,
+  },
   drive: undefined,
   notion: undefined,
   propertyExtraction: {
@@ -42,21 +47,21 @@ describe('youtube module e2e (real video)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it(
-    'add_youtube_url + search_youtube end-to-end',
-    async () => {
-      const tools = buildYoutubeModuleTools(store, config);
-      const addRes = (await tools.find((t) => t.name === 'add_youtube_url')!.handler({
+  it('add_youtube_url + search_youtube end-to-end', async () => {
+    const tools = buildYoutubeModuleTools(store, config);
+    const addRes = (await tools
+      .find((t) => t.name === 'add_youtube_url')!
+      .handler({
         url: 'https://www.youtube.com/watch?v=iG9CE55wbtY',
       })) as { id: string; title: string; segments: number };
-      expect(addRes.id).toBeDefined();
-      expect(addRes.segments).toBeGreaterThan(50);
+    expect(addRes.id).toBeDefined();
+    expect(addRes.segments).toBeGreaterThan(50);
 
-      const hits = (await tools.find((t) => t.name === 'search_youtube')!.handler({
+    const hits = (await tools
+      .find((t) => t.name === 'search_youtube')!
+      .handler({
         query: 'creativity in schools',
       })) as Array<{ id: string; title: string }>;
-      expect(hits.some((h) => h.id === addRes.id)).toBe(true);
-    },
-    120_000,
-  );
+    expect(hits.some((h) => h.id === addRes.id)).toBe(true);
+  }, 120_000);
 });

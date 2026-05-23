@@ -124,11 +124,7 @@ try {
 }
 
 if (stdoutOwnsLogFile) {
-  const noop = (
-    _chunk: string | Uint8Array,
-    cbOrEnc?: unknown,
-    cb?: unknown,
-  ): boolean => {
+  const noop = (_chunk: string | Uint8Array, cbOrEnc?: unknown, cb?: unknown): boolean => {
     // Resolve callback like the real write() so any awaited drains keep working.
     const callback = typeof cbOrEnc === 'function' ? cbOrEnc : cb;
     if (typeof callback === 'function') (callback as () => void)();

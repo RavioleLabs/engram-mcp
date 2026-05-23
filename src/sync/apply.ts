@@ -28,9 +28,7 @@
 import { createLogger } from '../logger.js';
 import { decryptPayload } from './ops-log.js';
 import { verifySignature, opCanonicalBytes } from './ed25519.js';
-import type {
-  WireOp,
-} from './types.js';
+import type { WireOp } from './types.js';
 import {
   AddMemoryPayloadSchema,
   UpdatePropertiesPayloadSchema,
@@ -256,14 +254,15 @@ export class ReplayApplier {
 
     // LWW merge
     const current = JSON.parse(existingRow.properties_json) as Record<string, unknown>;
-    const lastUpdateLamport = (
-      this.db
-        .prepare(
-          `SELECT MAX(lamport_ts) as m FROM ops_log
+    const lastUpdateLamport =
+      (
+        this.db
+          .prepare(
+            `SELECT MAX(lamport_ts) as m FROM ops_log
            WHERE memory_id = ? AND op_type = 'update_properties' AND applied = 1`,
-        )
-        .get(memory_id) as { m: number | null }
-    ).m ?? 0;
+          )
+          .get(memory_id) as { m: number | null }
+      ).m ?? 0;
 
     const verdict = tomb
       ? resolveDeleteVsUpdate(tomb, op.lamport_ts, tomb.deleted_at)
@@ -308,10 +307,7 @@ export class ReplayApplier {
     log.debug('delete_memory tombstone inserted', { memory_id, grace_until: now + GRACE_MS });
   }
 
-  async #applyAddRelation(
-    _op: WireOp,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
+  async #applyAddRelation(_op: WireOp, payload: Record<string, unknown>): Promise<void> {
     const { from_id, to_id } = payload as { from_id: string; to_id: string };
     // Add to_id to from_id's related_ids if not present
     const row = this.db
@@ -333,10 +329,7 @@ export class ReplayApplier {
  * Deletes from LanceDB and marks the tombstone as finalized.
  * Called from a local cron (every 10 minutes).
  */
-export async function finalizeTombstones(
-  db: Database.Database,
-  store: MemoryStore,
-): Promise<void> {
+export async function finalizeTombstones(db: Database.Database, store: MemoryStore): Promise<void> {
   const now = Date.now();
   const expired = db
     .prepare(

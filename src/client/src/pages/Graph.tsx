@@ -49,9 +49,9 @@ function savePositions(positions: Record<string, { x: number; y: number }>) {
 export default function Graph() {
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [positions, setPositions] = useState<
-    Record<string, { x: number; y: number }> | undefined
-  >(loadSavedPositions);
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }> | undefined>(
+    loadSavedPositions,
+  );
 
   const { data, isLoading, error } = useQuery<GraphData>({
     queryKey: ['graph', typeFilter],
@@ -59,13 +59,10 @@ export default function Graph() {
     staleTime: 60_000,
   });
 
-  const handlePositionsChange = useCallback(
-    (p: Record<string, { x: number; y: number }>) => {
-      setPositions(p);
-      savePositions(p);
-    },
-    [],
-  );
+  const handlePositionsChange = useCallback((p: Record<string, { x: number; y: number }>) => {
+    setPositions(p);
+    savePositions(p);
+  }, []);
 
   const handleNodeClick = useCallback((node: GraphNode) => {
     setSelectedNode(node);
@@ -76,9 +73,7 @@ export default function Graph() {
     window.location.href = `/search?q=${encodeURIComponent(query)}`;
   }, []);
 
-  const types = data
-    ? [...new Set(data.nodes.map((n) => n.type))].sort()
-    : [];
+  const types = data ? [...new Set(data.nodes.map((n) => n.type))].sort() : [];
 
   return (
     <div className="flex flex-col h-full">

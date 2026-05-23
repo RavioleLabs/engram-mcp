@@ -10,7 +10,12 @@ import type { EngramConfig } from '../../../../config/schema.js';
 
 const config: EngramConfig = {
   dataDir: '~/.engram',
-  embeddings: { provider: 'ollama' as const, baseUrl: 'http://localhost:11434', model: 'nomic-embed-text', dimensions: 768 },
+  embeddings: {
+    provider: 'ollama' as const,
+    baseUrl: 'http://localhost:11434',
+    model: 'nomic-embed-text',
+    dimensions: 768,
+  },
   drive: undefined,
   notion: undefined,
   propertyExtraction: {
