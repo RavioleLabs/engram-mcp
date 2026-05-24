@@ -183,10 +183,17 @@ jobs:
           send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'recall', arguments: { query: 'ci smoke test', limit: 5 } } });
           const recalled = await wait_for(4, 30000);
           const recResult = JSON.parse(recalled.result.content[0].text);
-          if (!Array.isArray(recResult.results) || recResult.results.length === 0) {
+          // `recall` returns the hits array directly (not wrapped in {results}).
+          // Accept either shape so the test stays robust to a future wrap.
+          const hits = Array.isArray(recResult)
+            ? recResult
+            : Array.isArray(recResult?.results)
+              ? recResult.results
+              : null;
+          if (!hits || hits.length === 0) {
             throw new Error('recall returned no results: ' + JSON.stringify(recResult));
           }
-          console.log('✓ recall:', recResult.results.length, 'hits');
+          console.log('✓ recall:', hits.length, 'hits');
 
           proc.kill();
           process.exit(0);
