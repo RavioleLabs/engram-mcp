@@ -18,10 +18,18 @@ jobs:
       matrix:
         target:
           - { os: darwin,  arch: arm64, runner: macos-14,    output: engram-mcp-darwin-arm64   }
-          - { os: darwin,  arch: x64,   runner: macos-13,    output: engram-mcp-darwin-x64     }
           - { os: linux,   arch: x64,   runner: ubuntu-22.04, output: engram-mcp-linux-x64     }
           - { os: linux,   arch: arm64, runner: ubuntu-22.04, output: engram-mcp-linux-arm64   }
           - { os: win,     arch: x64,   runner: ubuntu-22.04, output: engram-mcp-win-x64.exe   }
+          # darwin-x64 dropped: macos-13 runners on GH Actions free tier are
+          # severely supply-constrained — jobs queue for hours and frequently
+          # never run, which blocks the whole matrix (and the published
+          # release). Apple stopped selling Intel Macs in 2022; Apple Silicon
+          # (arm64) covers all current devices. Intel Mac users can install
+          # via `npm install -g @raviolelabs/engram-mcp` (works under Node
+          # x64) or wait for the Homebrew tap to expose a Rosetta-tagged
+          # bottle. Add this matrix entry back once macos-13 capacity opens
+          # or we move to a self-hosted Intel runner.
 
     steps:
       - name: Checkout
