@@ -56,8 +56,13 @@ jobs:
 
       - name: Verify binary
         run: |
+          # The binary is on PATH and is the right node script. We can't run
+          # `engram-mcp --help` here because there's no --help flag — it would
+          # silently start the server and block the CI step. The dedicated
+          # boot tests below exercise it properly under timeout.
           which engram-mcp
-          engram-mcp --help || true
+          file "$(which engram-mcp)"
+          head -1 "$(which engram-mcp)" | grep -q '^#!.*node' && echo "✓ valid node shebang"
 
       - name: Boot test 1 — empty config (must work)
         env:
