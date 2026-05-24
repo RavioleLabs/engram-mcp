@@ -20,10 +20,78 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import sodium from 'libsodium-wrappers';
 import { ulid } from 'ulid';
 import { WebSocket } from 'ws';
 import { createLogger } from '../logger.js';
 import { getValidJwt } from './auth.js';
+
+// ---------------------------------------------------------------------------
+// Noise-ish ECDH session — matches src/lib/noise.ts in engram-app (browser side)
+// ---------------------------------------------------------------------------
+//
+// Wire protocol (matches browser lib/bridge.ts handshake):
+//   1. On WS open, PC generates an X25519 keypair and sends its public key
+//      (32 raw bytes) as a binary frame. If no app peer is connected yet, the
+//      relay drops the frame — that's fine: PC re-sends on `peer_connected`.
+//   2. Browser receives the 32 bytes, generates its own keypair, derives
+//      shared session keys via crypto_kx_client_session_keys, sends its
+//      pubkey back.
+//   3. PC receives the 32-byte browser pubkey, derives shared keys via
+//      crypto_kx_server_session_keys (note: client/server roles must be
+//      symmetric — client.sharedTx == server.sharedRx and vice versa).
+//   4. All subsequent peer frames are: nonce(24) || secretbox_easy(plaintext)
+//
+// Why this is worth it: TLS to api.engram-mcp.com already covers transport
+// confidentiality, but the relay Durable Object brokers the WSS frames in
+// plaintext — anything we don't encrypt is visible to RavioleLabs operators
+// and to anyone with CF log access. The Noise layer makes the relay
+// effectively blind to bridge content: it sees opaque ciphertext, the keys
+// never leave PC ↔ browser. Without out-of-band pubkey trust the relay
+// COULD still MITM by swapping pubkeys, so this is defense-in-depth, not a
+// hard guarantee against a compromised relay operator.
+
+interface NoiseSession {
+  sharedTx: Uint8Array;
+  sharedRx: Uint8Array;
+  nonceTx: bigint;
+}
+
+let _sodiumReady = false;
+async function ensureSodium(): Promise<void> {
+  if (_sodiumReady) return;
+  await sodium.ready;
+  _sodiumReady = true;
+}
+
+function makeServerSession(
+  myKp: { publicKey: Uint8Array; privateKey: Uint8Array },
+  peerPub: Uint8Array,
+): NoiseSession {
+  const k = sodium.crypto_kx_server_session_keys(myKp.publicKey, myKp.privateKey, peerPub);
+  return { sharedTx: k.sharedTx, sharedRx: k.sharedRx, nonceTx: 0n };
+}
+
+function encryptFrame(session: NoiseSession, plaintext: Uint8Array): Uint8Array {
+  const nonceLen = sodium.crypto_secretbox_NONCEBYTES;
+  const n = new Uint8Array(nonceLen);
+  const view = new DataView(n.buffer);
+  view.setBigUint64(nonceLen - 8, session.nonceTx++, false);
+  const ct = sodium.crypto_secretbox_easy(plaintext, n, session.sharedTx);
+  const out = new Uint8Array(nonceLen + ct.length);
+  out.set(n, 0);
+  out.set(ct, nonceLen);
+  return out;
+}
+
+function decryptFrame(session: NoiseSession, cipher: Uint8Array): Uint8Array {
+  const nonceLen = sodium.crypto_secretbox_NONCEBYTES;
+  const n = cipher.slice(0, nonceLen);
+  const ct = cipher.slice(nonceLen);
+  const opened = sodium.crypto_secretbox_open_easy(ct, n, session.sharedRx);
+  if (!opened) throw new Error('decrypt failed');
+  return opened;
+}
 import { makeCheckServerIdentity } from './tls-pin.js';
 
 /**
@@ -214,30 +282,117 @@ export function startBridgeClient(opts: BridgeClientOptions): BridgeClient {
           ) => boolean,
         });
 
-        ws.on('open', () => {
-          log.info('Bridge relay: connected');
+        // Noise session state — reset on every WSS (re)connect so each
+        // dashboard session gets a fresh pair of session keys (forward
+        // secrecy). The keypair lives in memory only.
+        let noiseKp: { publicKey: Uint8Array; privateKey: Uint8Array } | null = null;
+        let noiseSession: NoiseSession | null = null;
+
+        ws.on('open', async () => {
+          log.info('Bridge relay: connected (initiating Noise handshake)');
           reconnectDelay = RECONNECT_BASE_MS; // reset backoff on success
-          ws!.send(JSON.stringify({ type: 'pc_ready' }));
+          try {
+            await ensureSodium();
+            noiseKp = sodium.crypto_kx_keypair();
+            // Send our pubkey as a raw 32-byte binary frame. If no app peer is
+            // connected the relay drops it; we'll resend on peer_connected.
+            ws!.send(Buffer.from(noiseKp.publicKey));
+          } catch (e) {
+            log.error(
+              `Bridge relay: handshake init failed — ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
         });
 
         ws.on('message', async (data) => {
-          let msg: unknown;
-          try {
-            msg = JSON.parse(data.toString());
-          } catch {
-            log.warn('Bridge relay: received non-JSON message, ignoring');
+          // Relay control frames are JSON UTF-8 strings; peer frames are
+          // binary (pubkey during handshake, then encrypted tunnel frames).
+          // Probe JSON first since it's the cheaper failure mode.
+          const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+          const asStr = buf.toString('utf8');
+          let isControl = false;
+          let controlObj: Record<string, unknown> | null = null;
+          if (asStr.length > 0 && asStr[0] === '{') {
+            try {
+              const parsed = JSON.parse(asStr) as Record<string, unknown>;
+              if (
+                typeof parsed.type === 'string' &&
+                parsed.requestId === undefined &&
+                parsed.path === undefined
+              ) {
+                isControl = true;
+                controlObj = parsed;
+              }
+            } catch {
+              // not JSON — treat as binary peer frame below
+            }
+          }
+
+          if (isControl && controlObj) {
+            const t = controlObj.type as string;
+            log.debug(`Bridge relay: control frame type=${t}`);
+            if (t === 'peer_connected' && noiseKp) {
+              // Browser just joined — resend our pubkey so its handshake can
+              // proceed. Also drop any stale session keys from a previous
+              // browser tab so the next encrypted frame derives from this
+              // new peer's pubkey.
+              noiseSession = null;
+              log.info('Bridge relay: peer connected — resending pubkey');
+              try {
+                ws!.send(Buffer.from(noiseKp.publicKey));
+              } catch (e) {
+                log.warn(`Bridge relay: failed to resend pubkey — ${String(e)}`);
+              }
+            } else if (t === 'peer_disconnected') {
+              noiseSession = null; // wipe session keys until next handshake
+            }
             return;
           }
 
-          // Ignore relay control frames (heartbeat, peer events) — they aren't tunnel requests.
-          // Heartbeat: {type:"ping",ts:...}
-          // Peer events: {type:"peer_disconnected"|"peer_offline","role":...}
-          // Error: {type:"error","code":...}
-          const obj = msg as Record<string, unknown>;
-          if (typeof obj.type === 'string' && obj.path === undefined) {
-            log.debug(`Bridge relay: control frame type=${obj.type as string} (ignoring)`);
+          // Binary peer frame
+          const bytes = new Uint8Array(buf);
+
+          if (!noiseSession) {
+            // Handshake phase — expect 32-byte browser pubkey
+            if (bytes.length === 32 && noiseKp) {
+              try {
+                noiseSession = makeServerSession(noiseKp, bytes);
+                log.info('Bridge relay: Noise handshake complete (channel encrypted)');
+              } catch (e) {
+                log.error(
+                  `Bridge relay: server session derivation failed — ${
+                    e instanceof Error ? e.message : String(e)
+                  }`,
+                );
+              }
+              return;
+            }
+            log.warn(
+              `Bridge relay: unexpected pre-handshake frame (${bytes.length} bytes), ignoring`,
+            );
             return;
           }
+
+          // Encrypted tunnel request — decrypt with sharedRx, parse as JSON
+          let plain: Uint8Array;
+          try {
+            plain = decryptFrame(noiseSession, bytes);
+          } catch (e) {
+            log.warn(
+              `Bridge relay: decrypt failed — ${
+                e instanceof Error ? e.message : String(e)
+              } (likely out-of-order or peer rotation)`,
+            );
+            return;
+          }
+          let msg: unknown;
+          try {
+            msg = JSON.parse(new TextDecoder().decode(plain));
+          } catch {
+            log.warn('Bridge relay: decrypted frame is not JSON');
+            return;
+          }
+          const obj = msg as Record<string, unknown>;
 
           // Tunnel request must have requestId + method + path with strict shape.
           // SECURITY: a malicious or compromised cloud relay could send crafted
@@ -293,8 +448,20 @@ export function startBridgeClient(opts: BridgeClientOptions): BridgeClient {
           log.debug(`Bridge relay: tunnel request ${req.requestId} ${req.method} ${req.path}`);
 
           const response = await forwardToLocal(req, opts.localPort);
-          if (ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(response));
+          if (ws?.readyState === WebSocket.OPEN && noiseSession) {
+            try {
+              const ct = encryptFrame(
+                noiseSession,
+                new TextEncoder().encode(JSON.stringify(response)),
+              );
+              ws.send(ct);
+            } catch (e) {
+              log.warn(
+                `Bridge relay: failed to encrypt response — ${
+                  e instanceof Error ? e.message : String(e)
+                }`,
+              );
+            }
           }
         });
 
