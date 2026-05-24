@@ -273,39 +273,21 @@ install_ollama() {
       info "Running: brew install ollama (this can take 1-3 min the first time)"
       brew install ollama 2>&1
     else
-      info "Homebrew not detected — downloading Ollama.app directly from ollama.com"
-      info "URL: https://ollama.com/download/Ollama-darwin.zip (~250 MB)"
-      TMPZIP=$(mktemp -t ollama-XXXXXX).zip
-      if curl -fL --progress-bar https://ollama.com/download/Ollama-darwin.zip -o "$TMPZIP" 2>&1; then
-        info "Extracting to /Applications/Ollama.app"
-        if unzip -q -o "$TMPZIP" -d /Applications/ 2>&1; then
-          # Tell the user we're stripping macOS quarantine — silent xattr
-          # removal is a CYA pattern they should be aware of (otherwise a
-          # security-conscious user might wonder why Gatekeeper doesn't
-          # prompt them about the downloaded app).
-          info "Removing macOS Gatekeeper quarantine on /Applications/Ollama.app"
-          info "(downloaded directly from ollama.com without browser scan; integrity rests on HTTPS to ollama.com)"
-          xattr -d com.apple.quarantine /Applications/Ollama.app 2>/dev/null || true
-          rm -f "$TMPZIP"
-          info "Launching Ollama.app (creates /usr/local/bin/ollama symlink)"
-          open -a Ollama 2>&1 || true
-          sleep 5
-          # Refresh PATH lookup
-          hash -r 2>/dev/null || true
-          if ! command -v ollama >/dev/null 2>&1; then
-            warn "Ollama installed but binary not in PATH yet"
-            info "May need: sudo ln -sf /Applications/Ollama.app/Contents/Resources/ollama /usr/local/bin/ollama"
-          fi
-        else
-          err "Failed to extract Ollama.zip"
-          rm -f "$TMPZIP"
-          return 1
-        fi
-      else
-        err "Failed to download Ollama from https://ollama.com/download/Ollama-darwin.zip"
-        info "Manual install: download from https://ollama.com/download and try again"
-        return 1
-      fi
+      # SECURITY: previous versions auto-downloaded Ollama-darwin.zip and ran
+      # `xattr -d com.apple.quarantine` to bypass Gatekeeper. That gave the
+      # installer the ability to drop an unsigned binary into /Applications
+      # without the macOS prompt — a real compromise of the user's threat
+      # model if ollama.com (or the network path to it) were tampered with.
+      # We removed both. If brew isn't present we ask the user to install
+      # Ollama themselves through a trusted path.
+      warn "Homebrew not detected — Ollama can't be installed automatically"
+      info "Two trusted options:"
+      info "  1) Install Homebrew (https://brew.sh) and re-run this script — we'll handle Ollama"
+      info "  2) Install Ollama yourself from https://ollama.com/download (the .dmg is Apple-signed)"
+      info "Engram needs Ollama for local embeddings (nomic-embed-text). The"
+      info "rest of the install will continue and you can finish setup later with:"
+      info "    engram-mcp install:wizard"
+      return 1
     fi
   elif [ "$PLATFORM" = "linux" ]; then
     # SECURITY: curl|sh from a third-party CDN. Ollama doesn't publish a
