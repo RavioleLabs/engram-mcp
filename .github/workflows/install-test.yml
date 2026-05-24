@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node 22
         uses: actions/setup-node@v4
@@ -207,7 +207,7 @@ jobs:
     name: install.sh + install.ps1 syntax check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: bash -n install.sh
         run: bash -n scripts/install.sh
       - name: shellcheck install.sh
