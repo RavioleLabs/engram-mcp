@@ -2,6 +2,7 @@ import http from 'http';
 import { URL } from 'url';
 import { getDb } from '../../../db/index.js';
 import { createLogger } from '../../../logger.js';
+import { decryptSecret } from '../../../core/secret-vault.js';
 import type { EngramConfig } from '../../../config/schema.js';
 
 const log = createLogger('notion:oauth');
@@ -65,7 +66,9 @@ export async function startNotionOAuthFlow(
   config: EngramConfig,
 ): Promise<{ authUrl: string; waitForCallback: Promise<NotionTokens> }> {
   if (!config.notion) throw new Error('notion.clientId/clientSecret not configured');
-  const { clientId, clientSecret, redirectPort } = config.notion;
+  const { clientId, redirectPort } = config.notion;
+  // SECURITY: see drive/oauth.ts — decrypt at use, never log plaintext.
+  const clientSecret = await decryptSecret(config.notion.clientSecret);
   const redirectUri = `http://localhost:${redirectPort}/oauth/callback/notion`;
 
   const authUrl = new URL('https://api.notion.com/v1/oauth/authorize');

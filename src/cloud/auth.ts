@@ -16,6 +16,7 @@ import path from 'path';
 import os from 'os';
 import { getDb } from '../db/index.js';
 import { createLogger } from '../logger.js';
+import { pinnedFetch } from './tls-pin.js';
 
 const log = createLogger('cloud:auth');
 
@@ -154,7 +155,9 @@ async function refreshJwt(
   baseUrl: string,
 ): Promise<{ jwt: string; expiresAt: number }> {
   const url = `${baseUrl.replace(/\/$/, '')}/auth/refresh`;
-  const res = await fetch(url, {
+  // pinnedFetch: defeats corporate MitM proxy that would otherwise steal
+  // the refresh token (long-lived) and the new JWT we receive.
+  const res = await pinnedFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),

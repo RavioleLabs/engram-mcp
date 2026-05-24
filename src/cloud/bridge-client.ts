@@ -24,6 +24,7 @@ import { ulid } from 'ulid';
 import { WebSocket } from 'ws';
 import { createLogger } from '../logger.js';
 import { getValidJwt } from './auth.js';
+import { makeCheckServerIdentity } from './tls-pin.js';
 
 /**
  * Load or create a stable device_id for this machine. Persisted at
@@ -203,6 +204,14 @@ export function startBridgeClient(opts: BridgeClientOptions): BridgeClient {
 
         ws = new WebSocket(wsUrl, {
           headers: { Authorization: `Bearer ${jwt}` },
+          // SECURITY: defeat corporate MitM proxies that install a rogue
+          // root CA in the OS trust store. See makeCheckServerIdentity in
+          // tls-pin.ts. ws's types declare a stricter callback signature
+          // than Node's tls.connect actually accepts — cast through unknown.
+          checkServerIdentity: makeCheckServerIdentity() as unknown as (
+            servername: string,
+            cert: string | Buffer | (string | Buffer)[],
+          ) => boolean,
         });
 
         ws.on('open', () => {

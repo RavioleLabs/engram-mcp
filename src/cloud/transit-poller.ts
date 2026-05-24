@@ -23,6 +23,7 @@ import { createHash } from 'crypto';
 import { getDb } from '../db/index.js';
 import { createLogger } from '../logger.js';
 import { getValidJwt } from './auth.js';
+import { pinnedFetch } from './tls-pin.js';
 import { decryptBlob } from './crypto.js';
 import { MemoryStore } from '../memory/core/store.js';
 import type { EngramConfig } from '../config/schema.js';
@@ -76,7 +77,7 @@ export interface TransitItem {
 
 async function fetchInbox(jwt: string, baseUrl: string, since: string): Promise<TransitItem[]> {
   const url = `${baseUrl.replace(/\/$/, '')}/transit/inbox?since=${encodeURIComponent(since)}`;
-  const res = await fetch(url, {
+  const res = await pinnedFetch(url, {
     headers: { Authorization: `Bearer ${jwt}` },
     signal: AbortSignal.timeout(30_000),
   });
@@ -88,7 +89,9 @@ async function fetchInbox(jwt: string, baseUrl: string, since: string): Promise<
 }
 
 async function downloadBlob(downloadUrl: string): Promise<Uint8Array> {
-  const res = await fetch(downloadUrl, { signal: AbortSignal.timeout(60_000) });
+  // pinnedFetch: blob download URLs are pre-signed but still hit our domain.
+  // Pin protects the JWT-derived signature from MitM observation.
+  const res = await pinnedFetch(downloadUrl, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok) {
     throw new Error(`Blob download failed ${res.status} from ${downloadUrl}`);
   }
@@ -98,7 +101,7 @@ async function downloadBlob(downloadUrl: string): Promise<Uint8Array> {
 
 async function ackItem(jwt: string, baseUrl: string, itemId: string): Promise<void> {
   const url = `${baseUrl.replace(/\/$/, '')}/transit/ack`;
-  const res = await fetch(url, {
+  const res = await pinnedFetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${jwt}`,

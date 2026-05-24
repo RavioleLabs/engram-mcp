@@ -2,6 +2,7 @@ import http from 'http';
 import { URL } from 'url';
 import { getDb } from '../../../db/index.js';
 import { createLogger } from '../../../logger.js';
+import { decryptSecret } from '../../../core/secret-vault.js';
 import type { EngramConfig } from '../../../config/schema.js';
 
 const log = createLogger('drive:oauth');
@@ -58,7 +59,10 @@ export async function startDriveOAuthFlow(
   config: EngramConfig,
 ): Promise<{ authUrl: string; waitForCallback: Promise<DriveTokens> }> {
   if (!config.drive) throw new Error('drive.clientId/clientSecret not configured');
-  const { clientId, clientSecret, redirectPort } = config.drive;
+  const { clientId, redirectPort } = config.drive;
+  // SECURITY: clientSecret may be stored encrypted in config.json (enc:v1:…)
+  // — decrypt at use, never log the plaintext.
+  const clientSecret = await decryptSecret(config.drive.clientSecret);
   const redirectUri = `http://localhost:${redirectPort}/oauth/callback/drive`;
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -139,13 +143,14 @@ export async function getValidAccessToken(config: EngramConfig): Promise<string>
   if (!tokens.refresh_token) throw new Error('Drive access token expired and no refresh token');
   if (!config.drive) throw new Error('drive client not configured');
 
+  const clientSecret = await decryptSecret(config.drive.clientSecret);
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       refresh_token: tokens.refresh_token,
       client_id: config.drive.clientId,
-      client_secret: config.drive.clientSecret,
+      client_secret: clientSecret,
       grant_type: 'refresh_token',
     }),
   });

@@ -1,0 +1,43 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    # Group dev-deps to reduce PR noise; runtime deps stay individual so each
+    # bump is easy to evaluate against the security audit / changelog.
+    groups:
+      dev-deps:
+        dependency-type: development
+        update-types: [minor, patch]
+      types:
+        patterns: ['@types/*']
+        update-types: [minor, patch]
+    # Allow only patch + minor by default — major bumps need human review
+    # because runtime deps are pinned exact and any major may touch ABI
+    # (better-sqlite3, lancedb) or remove APIs we rely on.
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+    commit-message:
+      prefix: 'chore(deps)'
+      include: scope
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Paris
+    commit-message:
+      prefix: 'chore(ci)'
+    labels:
+      - dependencies
+      - ci
