@@ -64,7 +64,7 @@ jobs:
           ls -lh dist/bin/
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.target.output }}
           path: |
