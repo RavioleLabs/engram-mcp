@@ -492,7 +492,11 @@ add_to_mcp_json() {
 
   BINARY_PATH="$INSTALL_DIR/$BINARY_NAME"
 
-  for MCP_FILE in "$HOME/.claude/mcp.json" "$HOME/.cursor/mcp.json"; do
+  # Claude Code reads MCP servers from ~/.claude.json (a single config file
+  # at the user level), NOT from ~/.claude/mcp.json. The latter is a
+  # deprecated path Claude Code no longer scans, so writing there made
+  # `/mcp` come up empty. Cursor still uses ~/.cursor/mcp.json.
+  for MCP_FILE in "$HOME/.claude.json" "$HOME/.cursor/mcp.json"; do
     MCP_DIR=$(dirname "$MCP_FILE")
     if [ ! -d "$MCP_DIR" ]; then
       info "$(basename "$MCP_DIR")/ not found — skipping ${MCP_FILE}"
@@ -500,7 +504,11 @@ add_to_mcp_json() {
     fi
 
     if [ ! -f "$MCP_FILE" ]; then
-      printf '{"mcpServers":{"engram":{"command":"%s","args":[]}}}\n' "$BINARY_PATH" > "$MCP_FILE"
+      # --no-http: when the LaunchAgent service already runs the HTTP
+      # dashboard on :7777, a second engram-mcp spawned by Claude Code /
+      # Cursor must NOT also try to bind that port or it exits with
+      # EADDRINUSE and the agent reports "Failed". MCP stdio works regardless.
+      printf '{"mcpServers":{"engram":{"command":"%s","args":["--no-http"]}}}\n' "$BINARY_PATH" > "$MCP_FILE"
       info "Created ${MCP_FILE}"
     elif command -v node >/dev/null 2>&1; then
       node - "$MCP_FILE" "$BINARY_PATH" <<'NODESCRIPT'
@@ -509,7 +517,7 @@ const [,, file, bin] = process.argv;
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
 cfg.mcpServers = cfg.mcpServers || {};
-cfg.mcpServers.engram = { command: bin, args: [] };
+cfg.mcpServers.engram = { command: bin, args: ['--no-http'] };
 fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
 NODESCRIPT
       info "Updated ${MCP_FILE}"

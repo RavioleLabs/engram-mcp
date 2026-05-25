@@ -231,7 +231,12 @@ function log(level: LogLevel, module: string, msg: string, data?: unknown) {
   } else {
     line = `${prefix} ${msg}`;
   }
-  console.log(line); // eslint-disable-line no-console
+  // stderr-only — when the binary is launched in MCP stdio mode (e.g. by
+  // Claude Code, Cursor) the stdout stream is reserved for JSON-RPC frames.
+  // INFO/DEBUG lines on stdout break the protocol and the agent reports
+  // "Failed". LaunchAgent + systemd both capture stderr too, so service
+  // logs still land in engram.err.
+  console.error(line); // eslint-disable-line no-console
   writeToLogFile(line);
 
   auditCallback?.(level, module, msg, data);
