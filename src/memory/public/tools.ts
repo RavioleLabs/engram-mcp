@@ -2003,8 +2003,7 @@ export async function routeIngest(
     const { validateFileUri, validateHttpUri } = await import(
       '../../core/security/uri-validator.js'
     );
-    const extraAllowed =
-      (config as unknown as { ingest?: { allowedPaths?: string[] } }).ingest?.allowedPaths ?? [];
+    const extraAllowed = config.ingest?.allowedPaths ?? [];
     if (normalUri.startsWith('file://')) {
       validateFileUri(normalUri, extraAllowed);
     } else if (normalUri.startsWith('http://') || normalUri.startsWith('https://')) {

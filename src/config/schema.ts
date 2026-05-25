@@ -160,6 +160,16 @@ export const EngramConfigSchema = z.object({
       httpPort: z.number().int().positive().default(7777),
     })
     .default({ stdio: true, httpPort: 7777 }),
+  // Ingest tool config — currently just an allowlist of extra directories the
+  // file:// URI validator will accept beyond the built-in ~/Documents,
+  // ~/Downloads, ~/Desktop, ~/Movies, ~/Music defaults. Use absolute paths
+  // (tilde expansion is the caller's job — node won't expand "~/foo").
+  // Example: { ingest: { allowedPaths: ["/Users/me/code", "/Users/me/raviolelabs"] } }
+  ingest: z
+    .object({
+      allowedPaths: z.array(z.string()).default([]),
+    })
+    .default({ allowedPaths: [] }),
   // Plan K addition — optional; absence = not paired, all cloud features dormant
   engramAccount: EngramAccountConfigSchema,
   // Plan N addition — optional; ops-log bidirectional sync
@@ -202,4 +212,5 @@ export const defaultConfig: EngramConfig = {
     youtube: { enabled: true },
   },
   mcp: { stdio: true, httpPort: 7777 },
+  ingest: { allowedPaths: [] },
 };
