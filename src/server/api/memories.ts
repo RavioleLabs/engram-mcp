@@ -87,7 +87,11 @@ export function memoriesApi(store: MemoryStore): Router {
   // GET /api/memories
   // -------------------------------------------------------------------------
   r.get('/', (req, res) => {
-    const limit = Math.min(200, Number(req.query.limit ?? 50));
+    // Hard cap is 2000 (one-call brain viz needs to render thousands at
+    // once). Pagination via offset is also supported for callers that want
+    // smaller chunks.
+    const limit = Math.min(2000, Math.max(1, Number(req.query.limit ?? 50)));
+    const offset = Math.max(0, Number(req.query.offset ?? 0));
     const type = req.query.type as string | undefined;
     // include_disabled=true → returns ALL memories incl. user-disabled types and
     // memories with properties.custom.disabled=true. Default false hides them.
@@ -99,15 +103,15 @@ export function memoriesApi(store: MemoryStore): Router {
       ? (getDb()
           .prepare(
             `SELECT id, type, source_id, content, properties_json, created_at
-             FROM memories WHERE type = ? ORDER BY created_at DESC LIMIT ?`,
+             FROM memories WHERE type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
           )
-          .all(type, limit) as Array<Record<string, unknown>>)
+          .all(type, limit, offset) as Array<Record<string, unknown>>)
       : (getDb()
           .prepare(
             `SELECT id, type, source_id, content, properties_json, created_at
-             FROM memories ORDER BY created_at DESC LIMIT ?`,
+             FROM memories ORDER BY created_at DESC LIMIT ? OFFSET ?`,
           )
-          .all(limit) as Array<Record<string, unknown>>);
+          .all(limit, offset) as Array<Record<string, unknown>>);
 
     const disabledTypes = getDisabledTypes();
 
