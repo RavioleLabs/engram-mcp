@@ -114,24 +114,43 @@ export async function indexChunk(
   chunk: VectorChunk,
   vector: Float32Array,
 ): Promise<void> {
-  if (vector.length !== VECTOR_DIM) {
-    throw new Error(`Vector dim mismatch: expected ${VECTOR_DIM}, got ${vector.length}`);
+  await indexChunksBatch(memoryType, [{ chunk, vector }]);
+}
+
+/**
+ * Batched chunk insert — one table.add() call per memory rather than per chunk.
+ * LanceDB's per-insert cost grows with table size (compaction touches the whole
+ * table on every write). Batching all chunks of a single memory into one insert
+ * keeps ingest ~constant-cost for multi-chunk docs.
+ *
+ * See specs/2026-05-24-engram-stress-test.md §P3: doc 10 took 4.8× longer than
+ * doc 1 ingesting same-size content into the same table.
+ */
+export async function indexChunksBatch(
+  memoryType: string,
+  entries: Array<{ chunk: VectorChunk; vector: Float32Array }>,
+): Promise<void> {
+  if (entries.length === 0) return;
+  for (const e of entries) {
+    if (e.vector.length !== VECTOR_DIM) {
+      throw new Error(`Vector dim mismatch: expected ${VECTOR_DIM}, got ${e.vector.length}`);
+    }
   }
   const table = await getTable(memoryType);
-  await table.add([
-    {
-      id: chunk.id,
-      source_id: chunk.source_id,
-      chunk_index: chunk.chunk_index,
-      content: chunk.content,
-      created_at: chunk.created_at,
-      field1: chunk.field1 ?? '',
-      field2: chunk.field2 ?? '',
-      field3: chunk.field3 ?? '',
-      field4: chunk.field4 ?? '',
-      vector: Array.from(vector),
-    },
-  ]);
+  await table.add(
+    entries.map((e) => ({
+      id: e.chunk.id,
+      source_id: e.chunk.source_id,
+      chunk_index: e.chunk.chunk_index,
+      content: e.chunk.content,
+      created_at: e.chunk.created_at,
+      field1: e.chunk.field1 ?? '',
+      field2: e.chunk.field2 ?? '',
+      field3: e.chunk.field3 ?? '',
+      field4: e.chunk.field4 ?? '',
+      vector: Array.from(e.vector),
+    })),
+  );
 }
 
 export async function semanticSearch(

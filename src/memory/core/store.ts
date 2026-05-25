@@ -1,17 +1,39 @@
 // src/memory/core/store.ts
 import { EventEmitter } from 'events';
 import { getDb } from '../../db/index.js';
-import { indexChunk, semanticSearch, deleteChunk } from '../../vector/store.js';
+import { indexChunksBatch, semanticSearch, deleteChunk } from '../../vector/store.js';
 import { embed } from '../../embeddings/index.js';
 import { chunkText as chunkTextBasic } from './chunker.js';
 import { createLogger } from '../../logger.js';
 import { extractProperties } from './property-extractor.js';
+import { ftsSearchByType } from './fts.js';
 import type { EmbeddingsConfig, PropertyExtractionConfig } from '../../config/schema.js';
 import type { MemoryItem, SearchResult } from '../../types.js';
 import type { OpsLogger } from '../../sync/ops-log.js';
 import type { EngramAlgorithms, EngramPrompts } from '../../core/server/mcp-handler.js';
 
 const log = createLogger('memory-store');
+
+/**
+ * Build the prefix string prepended to every chunk before embedding.
+ * Repeats title + tags in every chunk's vector so entity tokens get weight
+ * even on long, structurally-similar documents.
+ */
+function buildEmbedPrefix(item: MemoryItem): string {
+  const parts: string[] = [];
+  if (item.properties.title) parts.push(`# ${item.properties.title}`);
+  if (item.properties.tags && item.properties.tags.length > 0) {
+    parts.push(`Tags: ${item.properties.tags.join(', ')}`);
+  }
+  return parts.join('\n');
+}
+
+// RRF constant — k=60 is the standard value from the original paper (Cormack et al.)
+// and works well in practice across heterogeneous score distributions.
+const RRF_K = 60;
+
+/** Semantic similarity below this is treated as "no real affinity" — flagged weak. */
+const WEAK_SEMANTIC_THRESHOLD = 0.3;
 
 export interface MemoryStoreOptions {
   embeddings: EmbeddingsConfig;
@@ -132,23 +154,38 @@ export class MemoryStore {
     // Use private semantic chunker if loaded, else OSS paragraph/sentence fallback
     const chunkFn = this.options.algorithms?.chunkText ?? chunkTextBasic;
     const chunks = await Promise.resolve(chunkFn(item.content));
-    for (let i = 0; i < chunks.length; i++) {
-      const vec = await embed(chunks[i], this.options.embeddings);
-      const chunkId = chunks.length === 1 ? item.id : `${item.id}:${i}`;
-      await indexChunk(
-        item.type,
-        {
-          id: chunkId,
-          source_id: item.source_id,
-          chunk_index: i,
-          content: chunks[i],
-          created_at: Date.parse(item.properties.created_at),
-          field1: item.properties.title ?? '',
-          field2: (item.properties.tags ?? []).join(','),
-        },
-        vec,
-      );
-    }
+
+    // Title + tags prefix — embed these alongside the chunk so the entity tokens
+    // (client name, project name, key topics) contribute weight in every chunk's
+    // vector. Without this, repetitive-template docs (devis, releve_bancaire) all
+    // collapse to the same point in vector space and recall@1 drops to single digits.
+    // See specs/2026-05-24-engram-stress-test.md §P1.
+    const prefix = buildEmbedPrefix(item);
+
+    // Batch the vector writes: a single table.add() per memory rather than one per
+    // chunk. LanceDB's per-insert cost rises with table size (compaction touches the
+    // whole table); a single batched insert costs ~the same as one chunk insert.
+    // See specs/2026-05-24-engram-stress-test.md §P3.
+    const vectors = await Promise.all(
+      chunks.map(async (chunk, i) => {
+        const embedText = prefix ? `${prefix}\n\n${chunk}` : chunk;
+        const vec = await embed(embedText, this.options.embeddings);
+        const chunkId = chunks.length === 1 ? item.id : `${item.id}:${i}`;
+        return {
+          chunk: {
+            id: chunkId,
+            source_id: item.source_id,
+            chunk_index: i,
+            content: chunk,
+            created_at: Date.parse(item.properties.created_at),
+            field1: item.properties.title ?? '',
+            field2: (item.properties.tags ?? []).join(','),
+          },
+          vector: vec,
+        };
+      }),
+    );
+    await indexChunksBatch(item.type, vectors);
     log.debug(`Inserted memory ${item.id} (${chunks.length} chunks) in type=${item.type}`);
     this.events.emit('memory.added', item);
   }
@@ -190,30 +227,64 @@ export class MemoryStore {
   }
 
   async search(memoryType: string, query: string, limit = 10): Promise<SearchResult[]> {
-    // Fetch wider than `limit` so signal_boost can re-rank — semantic hits
-    // sorted purely by cosine similarity often miss the high-importance + pinned
-    // memory by 1-2 positions. 3x overshoot gives the ranker enough material.
-    const hits = await semanticSearch(memoryType, query, this.options.embeddings, limit * 3);
+    // HYBRID RETRIEVAL — semantic + FTS5 fused via RRF.
+    // Pre-fix, recall only ran semantic search. The stress-test showed two failures
+    // this fixes: (a) structurally-similar docs collapsed to ~0% r@1 because the
+    // embedding model couldn't distinguish "devis A" from "devis B"; (b) natural-
+    // language queries scored 16pts below keyword queries because FTS5 wasn't in
+    // the path. See specs/2026-05-24-engram-stress-test.md §P1, P6.
+    //
+    // Fetch wider than `limit` for both paths so RRF + signal_boost have material.
+    const overfetch = Math.max(limit * 3, 30);
+    const [semHits, ftsHits] = await Promise.all([
+      semanticSearch(memoryType, query, this.options.embeddings, overfetch),
+      Promise.resolve(ftsSearchByType(memoryType, query, overfetch)),
+    ]);
+
     const { signalBoost, effectiveConfidence, DEFAULT_SOFT_PURGE_THRESHOLD } = await import(
       './signals.js'
     );
     const db = getDb();
 
+    // Index semantic hits by memory id (collapsing per-chunk hits — keep best chunk).
+    const semByMemId = new Map<string, { sim: number; rank: number; snippet: string }>();
+    for (let rank = 0; rank < semHits.length; rank++) {
+      const hit = semHits[rank];
+      const memoryId = hit.chunk.id.includes(':') ? hit.chunk.id.split(':')[0] : hit.chunk.id;
+      const existing = semByMemId.get(memoryId);
+      if (!existing || hit.similarity > existing.sim) {
+        semByMemId.set(memoryId, {
+          sim: hit.similarity,
+          rank: rank + 1,
+          snippet: hit.chunk.content.slice(0, 200),
+        });
+      }
+    }
+
+    // Index FTS hits by memory id with their rank position.
+    const ftsRankByMemId = new Map<string, number>();
+    for (let rank = 0; rank < ftsHits.length; rank++) {
+      ftsRankByMemId.set(ftsHits[rank].id, rank + 1);
+    }
+
+    // Union of candidate ids from both paths.
+    const candidateIds = new Set<string>([...semByMemId.keys(), ...ftsRankByMemId.keys()]);
+
     type Scored = {
       memory: MemoryItem;
-      score: number;
+      semanticSim: number;
+      rrf: number;
       rank: number;
       snippet: string;
-      effConf: number;
+      match: 'semantic' | 'keyword' | 'both';
+      weak: boolean;
     };
     const scored: Scored[] = [];
 
-    for (const hit of hits) {
-      const memoryId = hit.chunk.id.includes(':') ? hit.chunk.id.split(':')[0] : hit.chunk.id;
+    for (const memoryId of candidateIds) {
       const memory = this.getById(memoryId);
       if (!memory) continue;
 
-      // Pull the signal columns directly — keep the public MemoryItem clean.
       const sig = db
         .prepare(
           `SELECT importance, pinned, skip_penalty, access_count, last_accessed_at, confidence, created_at
@@ -241,19 +312,39 @@ export class MemoryStore {
         confidence: sig.confidence ?? 1.0,
         created_at: sig.created_at,
       };
-      const effConf = effectiveConfidence(s);
-      if (effConf < DEFAULT_SOFT_PURGE_THRESHOLD) continue; // soft-purged
+      if (effectiveConfidence(s) < DEFAULT_SOFT_PURGE_THRESHOLD) continue;
+
+      const sem = semByMemId.get(memoryId);
+      const ftsRank = ftsRankByMemId.get(memoryId);
+
+      // RRF: sum 1/(k + rank) across lists. Memories appearing in both paths get boosted.
+      const semRrf = sem ? 1 / (RRF_K + sem.rank) : 0;
+      const ftsRrf = ftsRank !== undefined ? 1 / (RRF_K + ftsRank) : 0;
+      const rrf = semRrf + ftsRrf;
+
+      const semSim = sem?.sim ?? 0;
+      const snippet = sem?.snippet ?? memory.content.slice(0, 200);
+
+      const match: 'semantic' | 'keyword' | 'both' =
+        sem && ftsRank !== undefined ? 'both' : sem ? 'semantic' : 'keyword';
+
+      // Weak = neither path gave a strong signal. Semantic-only with sim < 0.3 and
+      // no FTS hit means the model has no real affinity — caller may want to drop it.
+      const weak = match === 'semantic' && semSim < WEAK_SEMANTIC_THRESHOLD;
 
       scored.push({
         memory,
-        score: hit.similarity,
-        rank: hit.similarity * signalBoost(s),
-        snippet: hit.chunk.content.slice(0, 200),
-        effConf,
+        semanticSim: semSim,
+        rrf,
+        // Final rank multiplies the fused RRF by the recall signal_boost
+        // (importance × decay × pinned × access × confidence × skip_penalty).
+        rank: rrf * signalBoost(s),
+        snippet,
+        match,
+        weak,
       });
     }
 
-    // Sort by rank desc, slice to limit, bump access counters for the survivors.
     scored.sort((a, b) => b.rank - a.rank);
     const surviving = scored.slice(0, limit);
     if (surviving.length > 0) {
@@ -263,7 +354,15 @@ export class MemoryStore {
       );
       for (const r of surviving) bumpStmt.run(now, r.memory.id);
     }
-    return surviving.map((r) => ({ memory: r.memory, score: r.score, snippet: r.snippet }));
+    return surviving.map((r) => ({
+      memory: r.memory,
+      // `score` stays semantic similarity (0..1) so callers have a calibrated
+      // confidence indicator. RRF score is a relative ranking — not useful externally.
+      score: r.semanticSim,
+      snippet: r.snippet,
+      match: r.match,
+      weak: r.weak,
+    }));
   }
 
   async delete(id: string): Promise<void> {

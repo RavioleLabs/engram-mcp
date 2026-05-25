@@ -1,6 +1,6 @@
 {
   "name": "@raviolelabs/engram-mcp",
-  "version": "0.5.12",
+  "version": "0.6.0",
   "mcpName": "io.github.RavioleLabs/engram-mcp",
   "description": "EngramMCP — local-first semantic memory layer for AI agents",
   "license": "Elastic-2.0",
@@ -10,15 +10,17 @@
     "engram-mcp-install": "dist/scripts/install.js",
     "engram-mcp-pair": "dist/scripts/pair.js",
     "engram-mcp-rebuild": "dist/scripts/rebuild.js",
-    "engram-mcp-service": "dist/scripts/service.js"
+    "engram-mcp-service": "dist/scripts/service.js",
+    "engram-mcp-setup-drive": "dist/scripts/setup-drive.js"
   },
   "scripts": {
     "dev": "tsx watch src/scripts/serve.ts",
     "reindex": "tsx src/scripts/reindex.ts",
     "install:wizard": "tsx src/scripts/install.ts",
+    "setup:drive": "tsx src/scripts/setup-drive.ts",
     "pair": "tsx src/scripts/pair.ts",
     "rebuild": "tsx src/scripts/rebuild.ts",
-    "build": "tsc && chmod +x dist/scripts/serve.js dist/scripts/install.js dist/scripts/pair.js dist/scripts/rebuild.js dist/scripts/service.js",
+    "build": "tsc && chmod +x dist/scripts/serve.js dist/scripts/install.js dist/scripts/pair.js dist/scripts/rebuild.js dist/scripts/service.js dist/scripts/setup-drive.js",
     "pack-binary": "tsx scripts/pack-binary.ts",
     "start": "node dist/scripts/serve.js",
     "test": "vitest run",

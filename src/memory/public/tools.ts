@@ -164,14 +164,14 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
     {
       name: 'recall',
       description: [
-        'Retrieve past memories by semantic similarity to a query.',
-        'INPUTS: query (required, short topic — NOT the full user question), optional types (array to restrict scope), optional limit (default 10, max 50).',
+        'Retrieve past memories by HYBRID search (semantic embedding + FTS5 keyword) fused with RRF.',
+        'INPUTS: query (required, short topic — NOT the full user question), optional types (array to restrict scope), optional limit (default 10, max 50), optional min_score (drop semantic-only weak matches below this threshold; default 0 = no filter).',
         'SCOPE: use scope="personal" (default) to search only personal memories, scope="workspace:<id>" for a specific team workspace, or scope="all" to search across personal + all joined workspaces.',
         'WHEN: you need to surface past information on a topic. Use recall instead of recent when you have a specific subject in mind.',
         'TIP: extract the topic noun from the user message. "what did I say about alice?" → query: "alice".',
         'ANTI-LOOP: if results is empty, the answer is genuinely "no matching memories" — DO NOT call recall again with the same query.',
         'Try a different query (synonym, broader topic, related entity) at most twice before telling the user "no matches".',
-        'RETURNS: array of { id, type, score, snippet, title, tags, created_at, scope }.',
+        'RETURNS: array of { id, type, score, match, weak, snippet, title, tags, created_at }. `match` is "semantic"|"keyword"|"both"; `weak: true` means no path returned a strong signal — treat as low-confidence.',
       ].join(' '),
       inputSchema: {
         type: 'object',
@@ -198,12 +198,19 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
             default: 10,
             description: 'Max results (default 10). Use 20 for exhaustive sweeps.',
           },
+          min_score: {
+            type: 'number',
+            default: 0,
+            description:
+              'Drop semantic-only results whose similarity is below this threshold. 0 = no filter (default). Set to 0.3 to suppress weak matches.',
+          },
         },
         required: ['query'],
       },
       handler: async (args) => {
         const query = args.query as string;
         const limit = (args.limit as number) ?? 10;
+        const minScore = (args.min_score as number) ?? 0;
         const types = (args.types as string[] | undefined) ?? store.listTypes();
 
         // Use private smart version if loaded (per-type weights + recency boost + MMR)
@@ -212,27 +219,39 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         }
 
         // ── OSS calibrated fallback ──────────────────────────────────────────
-        // Per-type weights + recency decay + MMR diversification
+        // store.search() now runs hybrid retrieval (semantic + FTS5 via RRF) and
+        // returns per-result `match` and `weak` fields. This layer adds per-type
+        // weights, recency decay, and MMR diversification on top.
         const perTypeLimit = Math.max(8, Math.ceil(limit * 1.5));
         const allResults = await Promise.all(
           types.map(async (t) => {
             try {
               const hits = await store.search(t, query, perTypeLimit);
-              return hits.map((h) => ({
-                ...h,
-                // Calibrated score = base_score * type_weight * recency_boost
-                score:
-                  h.score *
-                  (TYPE_WEIGHTS[t] ?? 0.85) *
-                  recencyBoost(Date.parse(h.memory.properties.created_at)),
-              }));
+              return hits
+                .filter((h) => {
+                  // min_score only applies to semantic-only weak matches; keyword
+                  // hits (any FTS path) are kept regardless because BM25 score is
+                  // not directly comparable to cosine similarity.
+                  if (h.match === 'semantic' && h.score < minScore) return false;
+                  return true;
+                })
+                .map((h) => ({
+                  ...h,
+                  // Calibrated rank = semantic_score * type_weight * recency_boost.
+                  // We keep h.score (raw semantic similarity) untouched in the
+                  // response so the caller has a calibrated confidence signal.
+                  _rank:
+                    Math.max(h.score, 0.05) *
+                    (TYPE_WEIGHTS[t] ?? 0.85) *
+                    recencyBoost(Date.parse(h.memory.properties.created_at)),
+                }));
             } catch {
               return [];
             }
           }),
         );
 
-        const candidates = allResults.flat().sort((a, b) => b.score - a.score);
+        const candidates = allResults.flat().sort((a, b) => b._rank - a._rank);
 
         // MMR diversification — penalize results too similar to already-picked ones
         const picked: typeof candidates = [];
@@ -245,21 +264,18 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
 
           for (let i = 0; i < remaining.length; i++) {
             const cand = remaining[i];
-            // Diversity penalty: max similarity to any already-picked memory
             let maxSim = 0;
             for (const p of picked) {
-              // Cheap similarity proxy: same source_id
               if (cand.memory.source_id === p.memory.source_id) {
                 maxSim = Math.max(maxSim, 0.6);
               }
-              // Shared tags
               const candTags = cand.memory.properties.tags ?? [];
               const pTags = p.memory.properties.tags ?? [];
               const sharedTags = candTags.filter((t) => pTags.includes(t)).length;
               const minTags = Math.min(candTags.length, pTags.length) || 1;
               maxSim = Math.max(maxSim, (sharedTags / minTags) * 0.5);
             }
-            const mmr = LAMBDA * cand.score - (1 - LAMBDA) * maxSim;
+            const mmr = LAMBDA * cand._rank - (1 - LAMBDA) * maxSim;
             if (mmr > bestMmr) {
               bestMmr = mmr;
               bestIdx = i;
@@ -274,6 +290,8 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           id: h.memory.id,
           type: h.memory.type,
           score: h.score,
+          match: h.match,
+          weak: h.weak,
           snippet: h.snippet,
           title: h.memory.properties.title,
           tags: h.memory.properties.tags,
@@ -1025,7 +1043,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           return {
             error: 'drive_not_configured',
             message: 'Google Drive OAuth credentials are not configured.',
-            hint: 'Set drive.clientId and drive.clientSecret in ~/.engram/config.json. Get OAuth credentials at https://console.cloud.google.com/apis/credentials',
+            hint: 'Run `engram-mcp-setup-drive` (or `npm run setup:drive` from source) for an interactive wizard. Manual setup: get OAuth credentials at https://console.cloud.google.com/apis/credentials, then set drive.clientId and drive.clientSecret in ~/.engram/config.json.',
           };
         }
         try {
@@ -1046,7 +1064,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           return {
             error: 'drive_not_configured',
             message: msg,
-            hint: 'Set drive.clientId and drive.clientSecret in ~/.engram/config.json. Get OAuth credentials at https://console.cloud.google.com/apis/credentials',
+            hint: 'Run `engram-mcp-setup-drive` (or `npm run setup:drive` from source) for an interactive wizard. Manual setup: get OAuth credentials at https://console.cloud.google.com/apis/credentials, then set drive.clientId and drive.clientSecret in ~/.engram/config.json.',
           };
         }
       },

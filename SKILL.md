@@ -122,12 +122,26 @@ Aim for 2-5 tags per memory. A memory with zero tags is retrievable only by exac
 
 ## Recall strategy
 
-`recall` does parallel fan-out across all types, then scores by semantic similarity + recency boost + MMR diversity (if private algorithms loaded). Tips:
+`recall` does **hybrid retrieval** — semantic embedding search + FTS5 keyword search, fused via Reciprocal Rank Fusion (RRF) — then layers per-type weights, recency boost, MMR diversity, and recall signals (importance/decay/pinned) on top. Tips:
 
 - Restrict `types` if you know the type — it's significantly faster.
 - Use short, topic-y queries. `"alice preferences"` not `"what does alice prefer about how we work together"`.
 - Default limit 10 is enough for most lookups; bump to 20-30 for exhaustive sweeps.
 - After recall, if a snippet looks relevant but incomplete, call `get(id)` for full content.
+
+### Result fields
+
+Each hit carries:
+- `score` — raw semantic similarity (0..1). A practical "confidence" indicator.
+- `match` — which path surfaced this: `"semantic"`, `"keyword"`, or `"both"`. `"both"` is the strongest signal.
+- `weak` — `true` when no path returned a strong signal (semantic-only with `score < 0.3` and no keyword match). Treat these as low-confidence — they often appear when the user query has no real affinity to any stored memory.
+- `snippet`, `title`, `tags`, `created_at` — usual context.
+
+If your top hit has `weak: true` and `match: "semantic"`, treat it like "no real match" — tell the user rather than presenting it as a fact.
+
+### `min_score` parameter
+
+Pass `min_score: 0.3` (or similar) to drop semantic-only hits below that threshold. Keyword hits (any FTS path) are always kept because BM25 scores aren't directly comparable to cosine similarity.
 
 ## Conversation pattern
 

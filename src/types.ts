@@ -46,4 +46,8 @@ export interface SearchResult {
   memory: MemoryItem;
   score: number;
   snippet: string;
+  /** Which retrieval paths surfaced this result. */
+  match?: 'semantic' | 'keyword' | 'both';
+  /** True when no path returned a strong signal — caller may want to suppress or warn. */
+  weak?: boolean;
 }
