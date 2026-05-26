@@ -28,6 +28,236 @@ function recencyBoost(createdAtMs: number): number {
   return Math.exp(-ageDays / 260); // ln(2)/180 ≈ 1/260
 }
 
+// ── Recall envelope: confidence label + hallucination guard hints ───────────
+// See specs/2026-05-25-engram-remaining-problems-v0.6.1.md §R3 + the empirical
+// study at specs/2026-05-25-engram-hallucination-study.md.
+//
+// EMPIRICAL CALIBRATION — measured on the 244-query v0.6.1 stress-test eval:
+//   - top-1 `score` ALONE is nearly useless as confidence: hits mean 0.47,
+//     misses mean 0.43 (huge overlap).
+//   - The discriminating signals are:
+//       * `match = 'both'` (FTS5 corroboration) — necessary but not sufficient
+//       * `gap = top1.score − top2.score` — hits p50=0.10, misses p50=0.04
+//       * `std_top5` (cluster tightness) — hits p50=0.07, misses p50=0.04
+//   - Gate `match='both' AND gap≥0.18 AND std≥0.09` achieves 100% precision
+//     (zero false positives) on the corpus but only fires for 8% of queries.
+//   - Gate `match='both' AND gap≥0.10` achieves 79% precision at 21% recall —
+//     reasonable default for "high" confidence.
+
+interface RecallHit {
+  id: string;
+  type: string;
+  score: number;
+  match?: 'semantic' | 'keyword' | 'both';
+  weak?: boolean;
+  snippet: string;
+  title?: string;
+  tags?: string[];
+  created_at: string;
+}
+
+interface RecallEnvelopeContext {
+  query: string;
+  totalCandidates: number;
+  requestedLimit: number;
+  searchedTypes: string[];
+  allTypes: string[];
+  /** Minimum confidence the caller is willing to surface. Anything below is dropped. */
+  minConfidence: 'none' | 'low' | 'medium' | 'high';
+}
+
+// Empirical thresholds — see study at specs/2026-05-25-engram-hallucination-study.md
+const HIGH_GAP_MIN = 0.1;
+const HIGH_SCORE_MIN = 0.3;
+const STRICT_GAP_MIN = 0.18;
+const STRICT_STD_MIN = 0.09;
+const LOW_SCORE_MAX = 0.25;
+const VERY_LOW_SCORE_MAX = 0.15;
+
+const CONFIDENCE_ORDER: Record<'none' | 'low' | 'medium' | 'high', number> = {
+  none: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
+function stdev(vals: number[]): number {
+  if (vals.length < 2) return 0;
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const variance = vals.reduce((s, x) => s + (x - mean) ** 2, 0) / (vals.length - 1);
+  return Math.sqrt(variance);
+}
+
+/**
+ * Decide a confidence label and (when risk is elevated) a one-line hint for
+ * the agent. Calibrated against the v0.6.1 stress-test data:
+ *
+ *   high   → match='both' AND gap≥0.10 AND score≥0.30   (79% precision in study)
+ *            STRICT mode (min_confidence='high') additionally requires
+ *            gap≥0.18 AND std≥0.09 → 100% precision (zero hallucination)
+ *   medium → match='both' OR score≥0.30                  (35% precision in study)
+ *   low    → weak, or very-low score, or no FTS corroboration
+ *   none   → empty result set
+ *
+ * If `min_confidence` is provided, results below that bar are DROPPED and
+ * replaced with an empty array + a hint pointing the agent at describe_types
+ * or query refinement. This is the "refuse mode" — better empty than wrong.
+ */
+function buildRecallEnvelope(
+  results: RecallHit[],
+  ctx: RecallEnvelopeContext,
+): {
+  results: RecallHit[];
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  hint?: string;
+  filtered?: number;
+} {
+  if (results.length === 0) {
+    return {
+      results,
+      confidence: 'none',
+      hint: buildEmptyHint(ctx),
+    };
+  }
+
+  const top = results[0];
+  const second = results[1];
+  const allWeak = results.every((r) => r.weak === true);
+
+  // Gap and cluster tightness — the two signals that actually discriminate
+  // hits from confident misses in the eval data.
+  const gap = second ? top.score - second.score : 1;
+  const stdTop5 = stdev(results.slice(0, 5).map((r) => r.score));
+
+  // High: dual signal (both) + meaningful gap + decent absolute score.
+  // The empirical "score >= 0.5 alone" rule was wrong — that catches as many
+  // misses as hits. Always require FTS corroboration for 'high'.
+  const baseHigh =
+    top.match === 'both' && gap >= HIGH_GAP_MIN && (top.score ?? 0) >= HIGH_SCORE_MIN;
+
+  // STRICT high (only used when min_confidence='high'): the zero-FP rule.
+  // gap ≥ 0.18 AND std_top5 ≥ 0.09 AND match='both' — empirically zero misses.
+  const strictHigh = baseHigh && gap >= STRICT_GAP_MIN && stdTop5 >= STRICT_STD_MIN && !top.weak;
+
+  const isLow =
+    allWeak ||
+    top.weak === true ||
+    (top.match === 'semantic' && (top.score ?? 0) < LOW_SCORE_MAX) ||
+    (top.score ?? 0) < VERY_LOW_SCORE_MAX;
+
+  let confidence: 'high' | 'medium' | 'low' = baseHigh ? 'high' : isLow ? 'low' : 'medium';
+
+  // ── min_confidence refuse mode ────────────────────────────────────────────
+  // If caller demanded 'high', enforce the strict zero-FP gate. Otherwise the
+  // base 'high' check is enough.
+  const effectiveHigh = ctx.minConfidence === 'high' ? strictHigh : baseHigh;
+  if (ctx.minConfidence === 'high' && !effectiveHigh) {
+    confidence = baseHigh ? 'medium' : confidence; // demote base-high to medium
+  }
+
+  if (ctx.minConfidence !== 'none' && ctx.minConfidence !== undefined) {
+    const minRank = CONFIDENCE_ORDER[ctx.minConfidence];
+    const currentRank = CONFIDENCE_ORDER[confidence];
+    if (currentRank < minRank) {
+      // Refuse mode: drop the results entirely, return a hint instead.
+      return {
+        results: [],
+        confidence,
+        hint: buildRefuseHint(ctx, top, confidence, gap, stdTop5),
+        filtered: results.length,
+      };
+    }
+  }
+
+  let hint: string | undefined;
+  if (confidence === 'low') {
+    hint = buildLowConfidenceHint(ctx, top);
+  } else if (confidence === 'medium' && gap < 0.05 && results.length >= 2) {
+    hint =
+      `Top ${Math.min(3, results.length)} results are very close in score (Δ=${gap.toFixed(3)}, ` +
+      `cluster std=${stdTop5.toFixed(3)}). Result may be ambiguous. To disambiguate: add ` +
+      `distinguishing entity tokens to the query (names, dates, identifiers), or restrict with ` +
+      `types=[${top.type}]. For zero-hallucination mode pass min_confidence="high".`;
+  } else if (
+    results.length === ctx.requestedLimit &&
+    ctx.totalCandidates > ctx.requestedLimit * 3
+  ) {
+    hint =
+      `Result limit (${ctx.requestedLimit}) reached with many more candidates available. ` +
+      `If your target isn't in the list, narrow with types=[<type>], add specific tag tokens to ` +
+      `the query, or bump limit (max 50).`;
+  }
+
+  const out: ReturnType<typeof buildRecallEnvelope> = { results, confidence };
+  if (hint) out.hint = hint;
+  return out;
+}
+
+function buildRefuseHint(
+  ctx: RecallEnvelopeContext,
+  top: RecallHit,
+  confidence: 'high' | 'medium' | 'low',
+  gap: number,
+  std: number,
+): string {
+  const parts: string[] = [
+    `Refused: top result is "${confidence}" confidence, below min_confidence="${ctx.minConfidence}".`,
+  ];
+  parts.push(
+    `Top-1 signals: score=${(top.score ?? 0).toFixed(2)}, match=${top.match ?? 'none'}, ` +
+      `gap_to_2=${gap.toFixed(3)}, cluster_std=${std.toFixed(3)}.`,
+  );
+  parts.push(
+    `Likely cause: many similar documents — the model can't single one out. To get a high-confidence answer: ` +
+      `(a) add specific entity tokens to the query (names, dates, identifiers), ` +
+      `(b) call describe_types(query="${ctx.query}") and retry with types=[<top type>], ` +
+      `(c) if the user's question is exploratory rather than factual, lower min_confidence to "medium" and verify manually with get(id).`,
+  );
+  return parts.join(' ');
+}
+
+function buildEmptyHint(ctx: RecallEnvelopeContext): string {
+  const restricted = ctx.searchedTypes.length < ctx.allTypes.length;
+  if (restricted) {
+    return (
+      `No matches in types=[${ctx.searchedTypes.join(', ')}]. ` +
+      `Try (a) recall without types= to search everything, ` +
+      `(b) describe_types(query="${ctx.query}") to see which types actually match this query, ` +
+      `(c) recent({limit: 20}) to browse what's there.`
+    );
+  }
+  return (
+    `No matches across any type. The store may not contain anything about this topic — ` +
+    `DO NOT retry recall with the same query (anti-loop). ` +
+    `Try (a) a synonym / broader topic, (b) describe_types() to see what is stored and pick a likely-relevant type, ` +
+    `(c) recent({limit: 20}) to browse.`
+  );
+}
+
+function buildLowConfidenceHint(ctx: RecallEnvelopeContext, top: RecallHit): string {
+  const parts: string[] = ['Low-confidence match — top result may not be relevant.'];
+
+  // What signals does the top hit have? Steer the agent to the cheapest fix.
+  if (top.match === 'semantic' && top.score < 0.25) {
+    parts.push(
+      `Top is semantic-only with weak similarity (${top.score.toFixed(2)}). ` +
+        `Try adding specific entity tokens (names, project codes, dates) to hit the keyword path.`,
+    );
+  }
+
+  if (ctx.searchedTypes.length === ctx.allTypes.length && ctx.allTypes.length > 1) {
+    parts.push(
+      `Call describe_types(query="${ctx.query}") to see which types are likely relevant, then retry with types=[<that>].`,
+    );
+  }
+
+  parts.push(
+    `VERIFY before citing as fact: call get(id) on the top result and check it actually answers the query.`,
+  );
+
+  return parts.join(' ');
+}
+
 export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPToolDefinition[] {
   const embeddingModel = `${config.embeddings.provider}/${config.embeddings.model}`;
 
@@ -36,15 +266,18 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
     {
       name: 'remember',
       description: [
-        'Store a memory (note, audio transcript, conversation, document) for later semantic retrieval.',
-        'INPUTS: content (required, free text). Optionally provide title (improves retrieval — 3-7 words), tags (array of strings — topics/people/projects this memory is about), type (default "notes"; use "conversations" for dialog turns, or any custom type), and properties (object — any extra key/value metadata).',
+        'Store a memory (note, audio transcript, conversation, document, bank statement, invoice) for later semantic retrieval.',
+        'INPUTS: content (required, free text). Optionally provide title (improves retrieval — 3-7 words), tags (array of strings — topics/people/projects this memory is about), type (default: auto-detected from content via registered parsers, falls back to "notes"; you can also pass any custom type), and properties (object — any extra key/value metadata).',
+        'AUTO-TYPE: when type is omitted, engram scans registered parsers (bank statements, invoices, etc.) and auto-routes. The response echoes `type` and `type_auto_detected` so you can confirm.',
+        'STRUCTURED CONTENT: when type matches a registered parser (e.g. "releve_bancaire"), engram parses the content into structured fields (operations, amounts, holder, period) BEFORE indexing — each row becomes its own searchable chunk. Massively improves recall on tabular content.',
+        'PARSE-HINT: when type has a parser but content didn\'t match (e.g. unknown bank format), the response includes `parse_hint` — you should then extract the fields yourself (you are the LLM) and re-call remember() with properties.custom populated. See SKILL.md "Ingesting tabular content".',
         'SCOPE: use scope="personal" (default) for private memories, or scope="workspace:<id>" to store in a team workspace (get id from list_workspaces).',
         'WHEN: call after user shares anything worth remembering (preferences, facts, decisions, exchanges). Always include title + 2-5 tags so it surfaces in future recall.',
         'WIKILINKS: mention related memories by [[id]] or [[title]] in content — edges are auto-extracted.',
         'IDEMPOTENT on (content_hash, type): calling twice with identical content returns the same id with {created: false}.',
         'DO NOT retry on success — store the returned id and move on.',
         'If you get an error: retry at most once with adjusted input; if still fails, surface to user.',
-        'RETURNS: { id, created, wikilinks_extracted }.',
+        'RETURNS: { id, created, type, wikilinks_extracted, type_auto_detected?, detected_by?, parsed_by?, parse_hint? }.',
       ].join(' '),
       inputSchema: {
         type: 'object',
@@ -85,7 +318,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         const content = args.content as string;
         const title = args.title as string | undefined;
         const tags = args.tags as string[] | undefined;
-        const type = (args.type as string | undefined) ?? 'notes';
+        const explicitType = args.type as string | undefined;
         const scope = (args.scope as string | undefined) ?? 'personal';
         const extraProps = (args.properties as Record<string, unknown> | undefined) ?? {};
 
@@ -104,6 +337,16 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
             } KB. ` + `Split into multiple remember() calls or use ingest() for large files.`,
           );
         }
+
+        // ── Auto-detect type when not explicitly provided ───────────────────
+        // If the caller didn't pass `type`, scan registered parsers' canParse()
+        // and route to the matching type. This makes raw remember(content) work
+        // sensibly for bank statements / invoices / other parser-known formats
+        // without requiring the agent to pre-classify. See specs/2026-05-25-engram-
+        // hallucination-study.md for why type routing matters for recall.
+        const { detectType } = await import('../core/parsers.js');
+        const detected = !explicitType ? detectType(content) : null;
+        const type = explicitType ?? detected?.type ?? 'notes';
 
         const contentHash = createHash('sha256').update(content).digest('hex');
 
@@ -144,13 +387,43 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           embedding_model: embeddingModel,
         };
 
+        // Pre-insert parse-hint check: if the type has a registered parser
+        // but none of them matches this content, the agent should consider
+        // doing LLM-side parsing first. We compute this BEFORE insert (the
+        // insert itself also applies parsing, but only emits side effects).
+        const { hasParserForType, findParser } = await import('../core/parsers.js');
+        const parseHint =
+          hasParserForType(type) && !findParser(type, content)
+            ? {
+                parse_hint:
+                  `Type "${type}" has a registered parser but this content didn't match. ` +
+                  `For best recall, parse it yourself (you are the LLM): extract the key fields ` +
+                  `(holder, dates, amounts, distinctive operations) and pass them in properties.custom ` +
+                  `with structured tags. Then call remember() again. ` +
+                  `See SKILL.md "Ingesting tabular content" for the pattern.`,
+              }
+            : {};
+
         await store.insert(item);
-        log.debug(`remember: stored ${item.id} type=${type}`);
+        const itemAfter = store.getById(item.id);
+        const parsedBy = (itemAfter?.properties.custom as Record<string, unknown> | undefined)
+          ?.parsed_by;
+        log.debug(
+          `remember: stored ${item.id} type=${type}${
+            parsedBy ? ` parsed_by=${parsedBy as string}` : ''
+          }`,
+        );
 
         const response: Record<string, unknown> = {
           id: item.id,
           created: true,
+          type, // echo back so the agent knows what type was used (esp. on auto-detect)
           wikilinks_extracted: wikilinks,
+          ...(detected
+            ? { type_auto_detected: detected.type, detected_by: detected.parser_id }
+            : {}),
+          ...(parsedBy ? { parsed_by: parsedBy } : {}),
+          ...parseHint,
         };
         if (!title || !tags || tags.length === 0) {
           response.hint =
@@ -164,14 +437,20 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
     {
       name: 'recall',
       description: [
-        'Retrieve past memories by HYBRID search (semantic embedding + FTS5 keyword) fused with RRF.',
+        'Retrieve past memories by HYBRID search (semantic embedding + FTS5 keyword) fused with RRF, then reranked by tag overlap.',
         'INPUTS: query (required, short topic — NOT the full user question), optional types (array to restrict scope), optional limit (default 10, max 50), optional min_score (drop semantic-only weak matches below this threshold; default 0 = no filter).',
         'SCOPE: use scope="personal" (default) to search only personal memories, scope="workspace:<id>" for a specific team workspace, or scope="all" to search across personal + all joined workspaces.',
         'WHEN: you need to surface past information on a topic. Use recall instead of recent when you have a specific subject in mind.',
         'TIP: extract the topic noun from the user message. "what did I say about alice?" → query: "alice".',
         'ANTI-LOOP: if results is empty, the answer is genuinely "no matching memories" — DO NOT call recall again with the same query.',
         'Try a different query (synonym, broader topic, related entity) at most twice before telling the user "no matches".',
-        'RETURNS: array of { id, type, score, match, weak, snippet, title, tags, created_at }. `match` is "semantic"|"keyword"|"both"; `weak: true` means no path returned a strong signal — treat as low-confidence.',
+        'RETURNS: { results, confidence, hint?, filtered? }.',
+        '  - results: array of { id, type, score, match, weak, snippet, title, tags, created_at }. `match` is "semantic"|"keyword"|"both"; `weak: true` means no path returned a strong signal.',
+        '  - confidence: "high"|"medium"|"low"|"none" — calibrated overall trust of the top hit (do NOT trust raw `score` alone — see specs §R3).',
+        '  - hint: present when confidence < high OR results were refused by min_confidence. One-line actionable suggestion (narrow with types=, add tag tokens, call describe_types) — read it before citing a result as fact.',
+        '  - filtered: present when min_confidence triggered refuse mode — number of results dropped. results=[] in this case.',
+        'HALLUCINATION GUARD: for factual queries where the wrong answer is unacceptable, pass min_confidence="high". Engram will return empty + hint rather than risk a confident-looking miss. Empirically zero false positives on the stress-test corpus.',
+        'GUARD: if confidence is "low" or "none", VERIFY before citing: call get(top.id) and check the content actually answers the question.',
       ].join(' '),
       inputSchema: {
         type: 'object',
@@ -204,6 +483,13 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
             description:
               'Drop semantic-only results whose similarity is below this threshold. 0 = no filter (default). Set to 0.3 to suppress weak matches.',
           },
+          min_confidence: {
+            type: 'string',
+            enum: ['none', 'low', 'medium', 'high'],
+            default: 'none',
+            description:
+              'HALLUCINATION GUARD. When the top hit\'s calibrated confidence is below this threshold, recall returns empty results + a hint instead of risking a confident-looking wrong answer. Use "high" for factual queries where citing the wrong doc is unacceptable (empirically zero false positives but rare hits, ~8% of queries). Use "medium" for general use. "none" (default) returns everything with a confidence label.',
+          },
         },
         required: ['query'],
       },
@@ -211,6 +497,8 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         const query = args.query as string;
         const limit = (args.limit as number) ?? 10;
         const minScore = (args.min_score as number) ?? 0;
+        const minConfidence =
+          (args.min_confidence as 'none' | 'low' | 'medium' | 'high' | undefined) ?? 'none';
         const types = (args.types as string[] | undefined) ?? store.listTypes();
 
         // Use private smart version if loaded (per-type weights + recency boost + MMR)
@@ -286,7 +574,8 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           remaining.splice(bestIdx, 1);
         }
 
-        return picked.slice(0, limit).map((h) => ({
+        const final = picked.slice(0, limit);
+        const results = final.map((h) => ({
           id: h.memory.id,
           type: h.memory.type,
           score: h.score,
@@ -297,6 +586,23 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           tags: h.memory.properties.tags,
           created_at: h.memory.properties.created_at,
         }));
+
+        // ── Hallucination guard: confidence label + actionable hint ──────────
+        // The v0.6.1 stress test (§R3) showed scores overlap heavily between
+        // real hits and confident misses (a wrong doc can come back at 0.65;
+        // a real hit can come back at 0.06). The agent has no reliable way to
+        // tell whether to trust the result. This envelope gives a structured
+        // hint when the result set looks risky — the agent can then retry with
+        // narrower scope (types, tag tokens in the query) before citing as fact.
+        const envelope = buildRecallEnvelope(results, {
+          query,
+          totalCandidates: candidates.length,
+          requestedLimit: limit,
+          searchedTypes: types,
+          allTypes: store.listTypes(),
+          minConfidence,
+        });
+        return envelope;
       },
     },
 
@@ -441,10 +747,110 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         'Also useful before a recall to decide whether to restrict types.',
         'CACHE: this is a cheap call but cache the result for the duration of the conversation — DO NOT call repeatedly in the same turn.',
         'RETURNS: { types: string[] }.',
+        'TIP: for rich per-type metadata (counts, top tags, last activity) use describe_types instead.',
       ].join(' '),
       inputSchema: { type: 'object', properties: {} },
       handler: async () => {
         return { types: store.listTypes() };
+      },
+    },
+
+    // ── describe_types ────────────────────────────────────────────────────────
+    {
+      name: 'describe_types',
+      description: [
+        'List memory types WITH rich metadata: count, top tags, last activity, and (if query given) keyword-match counts.',
+        'INPUTS: optional query (free text) — when provided, each type also reports how many memories match via FTS5, ordered by match count.',
+        'WHEN: before recall on an unfamiliar Engram instance, or when recall returned a hint asking to narrow. The output tells you which types are worth restricting to.',
+        'CACHE: re-call once per conversation turn at most — it scans all rows per type.',
+        'RETURNS: { types: Array<{ name, count, top_tags: string[], last_activity_at, query_matches? }> }. Sorted by query_matches desc when query is given, else by count desc.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              'Optional. If provided, also returns FTS5-match count per type so you can pick the most relevant scope to recall against.',
+          },
+        },
+      },
+      handler: async (args) => {
+        const { getDb } = await import('../../db/index.js');
+        const { buildFtsMatch } = await import('../core/fts.js');
+        const db = getDb();
+        const query = args.query as string | undefined;
+        const ftsMatch = query ? buildFtsMatch(query) : null;
+
+        const typeRows = db
+          .prepare(
+            `SELECT type, COUNT(*) AS count, MAX(created_at) AS last_activity
+             FROM memories
+             GROUP BY type`,
+          )
+          .all() as Array<{ type: string; count: number; last_activity: number }>;
+
+        const tagFreqStmt = db.prepare(
+          `SELECT properties_json FROM memories WHERE type = ? LIMIT 500`,
+        );
+
+        const out = typeRows.map((row) => {
+          // Top tags: count tag frequency across (up to) the latest 500 rows of this type.
+          // 500 is a soft cap to keep this O(n) for big tables; the top tags converge fast.
+          const tagCounts = new Map<string, number>();
+          const sample = tagFreqStmt.all(row.type) as Array<{ properties_json: string }>;
+          for (const r of sample) {
+            try {
+              const props = JSON.parse(r.properties_json) as { tags?: string[] };
+              for (const tag of props.tags ?? []) {
+                tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+              }
+            } catch {
+              // skip malformed rows
+            }
+          }
+          const top_tags = [...tagCounts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8)
+            .map(([tag]) => tag);
+
+          let query_matches: number | undefined;
+          if (ftsMatch) {
+            try {
+              const r = db
+                .prepare(
+                  `SELECT COUNT(*) AS n
+                   FROM memories_fts
+                   JOIN memories m ON m.id = memories_fts.id
+                   WHERE memories_fts MATCH ? AND m.type = ?`,
+                )
+                .get(ftsMatch, row.type) as { n: number };
+              query_matches = r.n;
+            } catch {
+              query_matches = 0;
+            }
+          }
+
+          return {
+            name: row.type,
+            count: row.count,
+            top_tags,
+            last_activity_at:
+              row.last_activity > 0 ? new Date(row.last_activity).toISOString() : null,
+            ...(query_matches !== undefined ? { query_matches } : {}),
+          };
+        });
+
+        // Sort: by query_matches desc when query given (zero-match types last);
+        // else by count desc.
+        out.sort((a, b) => {
+          if (query) {
+            return (b.query_matches ?? 0) - (a.query_matches ?? 0) || b.count - a.count;
+          }
+          return b.count - a.count;
+        });
+
+        return { types: out };
       },
     },
 

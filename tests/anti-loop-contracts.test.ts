@@ -200,15 +200,15 @@ describe('anti-loop idempotency contracts', () => {
   });
 
   // ── tool count ────────────────────────────────────────────────────────────────
-  it('buildPublicTools returns exactly 24 tools', () => {
-    expect(tools.length).toBe(24);
+  it('buildPublicTools returns the expected number of tools', () => {
+    expect(tools.length).toBe(25);
   });
 
-  it('all 24 expected tools are present', () => {
+  it('all expected tools are present', () => {
     const names = new Set(tools.map((t) => t.name));
     const expected = [
       'remember', 'recall', 'get', 'update', 'forget', 'relate',
-      'list_types', 'recent', 'ingest', 'get_ingest_status', 'suggest_properties',
+      'list_types', 'describe_types', 'recent', 'ingest', 'get_ingest_status', 'suggest_properties',
       'watch', 'unwatch', 'list_sources',
       'create_type', 'delete_type',
       'connect_drive', 'list_drive_files',

@@ -55,11 +55,10 @@ describe('public tools — full 24-tool surface', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // Verify the surface has exactly 24 tools (all public — no admin flag)
-  it('exposes exactly 24 public tools', () => {
+  // Verify the surface has exactly the expected public tools (no admin flag)
+  it('exposes the expected public tools', () => {
     const tools = buildPublicTools(store, mockConfig);
     const names = tools.map((t) => t.name);
-    expect(names).toHaveLength(24);
     // Core memory tools
     expect(names).toContain('remember');
     expect(names).toContain('recall');
@@ -68,6 +67,7 @@ describe('public tools — full 24-tool surface', () => {
     expect(names).toContain('forget');
     expect(names).toContain('relate');
     expect(names).toContain('list_types');
+    expect(names).toContain('describe_types');
     expect(names).toContain('recent');
     expect(names).toContain('ingest');
     expect(names).toContain('suggest_properties');
@@ -116,16 +116,21 @@ describe('public tools — full 24-tool surface', () => {
     expect(stored?.properties.tags).toContain('atlas');
   });
 
-  it('recall returns semantic hits', async () => {
+  it('recall returns envelope with results + confidence', async () => {
     const tools = buildPublicTools(store, mockConfig);
-    const results = (await tools
+    const envelope = (await tools
       .find((t) => t.name === 'recall')!
       .handler({
         query: 'coding typescript',
         limit: 5,
-      })) as Array<{ id: string; type: string; score: number }>;
-    expect(results.length).toBeGreaterThan(0);
-    expect(results[0].type).toBe('notes');
+      })) as {
+      results: Array<{ id: string; type: string; score: number }>;
+      confidence: 'high' | 'medium' | 'low' | 'none';
+      hint?: string;
+    };
+    expect(envelope.results.length).toBeGreaterThan(0);
+    expect(envelope.results[0].type).toBe('notes');
+    expect(['high', 'medium', 'low']).toContain(envelope.confidence);
   });
 
   it('get retrieves full memory by id', async () => {

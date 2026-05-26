@@ -88,6 +88,11 @@ export async function buildEngramRuntime(
   initDb(config.dataDir);
   initVectorStore(config.dataDir);
 
+  // Register builtin parsers (BNP releve, etc.) before any module boots so
+  // remember() calls during module init also benefit from parsing. Idempotent.
+  const { registerBuiltinParsers } = await import('../../memory/modules/parsers/index.js');
+  registerBuiltinParsers();
+
   // Startup GC: sweep ingest jobs older than 7 days
   try {
     const { gcJobsOnStartup } = await import('../../ingest/jobs.js');

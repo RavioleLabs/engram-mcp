@@ -31,7 +31,7 @@ describe('MCP E2E (real subprocess) — full 24-tool public surface', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('lists exactly 24 public tools (all tools always available)', async () => {
+  it('lists expected public tools (all tools always available)', async () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name);
     // Core memory tools
@@ -42,6 +42,7 @@ describe('MCP E2E (real subprocess) — full 24-tool public surface', () => {
     expect(names).toContain('forget');
     expect(names).toContain('relate');
     expect(names).toContain('list_types');
+    expect(names).toContain('describe_types');
     expect(names).toContain('recent');
     expect(names).toContain('ingest');
     expect(names).toContain('suggest_properties');

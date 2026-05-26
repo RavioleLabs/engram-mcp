@@ -6,7 +6,8 @@ import { embed } from '../../embeddings/index.js';
 import { chunkText as chunkTextBasic } from './chunker.js';
 import { createLogger } from '../../logger.js';
 import { extractProperties } from './property-extractor.js';
-import { ftsSearchByType } from './fts.js';
+import { ftsSearchByType, tokenizeQuery } from './fts.js';
+import { applyParser } from './parsers.js';
 import type { EmbeddingsConfig, PropertyExtractionConfig } from '../../config/schema.js';
 import type { MemoryItem, SearchResult } from '../../types.js';
 import type { OpsLogger } from '../../sync/ops-log.js';
@@ -34,6 +35,23 @@ const RRF_K = 60;
 
 /** Semantic similarity below this is treated as "no real affinity" — flagged weak. */
 const WEAK_SEMANTIC_THRESHOLD = 0.3;
+
+/**
+ * Tag-overlap rerank boost. For each query token that also appears in a hit's
+ * tags, the hit gets a small additive boost on its final rank. Cheap O(N×M)
+ * but N stays small (we only rerank the over-fetched candidates).
+ *
+ * The v0.6.1 report (§R1/R2) showed bank statements and technical "how-to"
+ * docs collapsing because the embedding signal was dominated by template
+ * structure. Tags are well-populated by remember() but currently only count
+ * via FTS5 on the tags column — when the user query is fully natural-language,
+ * FTS5 won't pick up the relevant tags unless the tokens overlap. This boost
+ * gives that direct signal regardless of FTS5 path activation.
+ *
+ * BOOST_PER_TAG_MATCH is small relative to typical RRF×signal_boost ranks
+ * (~0.01–0.02) so it nudges close calls rather than overriding semantics.
+ */
+const BOOST_PER_TAG_MATCH = 0.008;
 
 export interface MemoryStoreOptions {
   embeddings: EmbeddingsConfig;
@@ -66,6 +84,16 @@ export class MemoryStore {
   }
 
   async insert(item: MemoryItem): Promise<void> {
+    // ── Per-type parser hook ───────────────────────────────────────────────
+    // Run before logging so the sync stream gets the enriched (structured) item,
+    // not the raw text. Parsers can rewrite content, add structured properties,
+    // and provide subchunks (one chunk per row for tabular content). See
+    // src/memory/core/parsers.ts and specs/2026-05-25-engram-hallucination-study.md
+    // for the rationale (tabular content collapses on free-text embedding).
+    const parsed = applyParser(item);
+    item = parsed.item;
+    const parserSubchunks = parsed.subchunks;
+
     // Log op BEFORE writing to SQLite (ops log is source of truth for sync)
     if (this.opsLogger) {
       this.opsLogger.append('add_memory', item.id, { item });
@@ -150,10 +178,18 @@ export class MemoryStore {
       (item.properties.tags ?? []).join(' '),
     );
 
-    // Vector index — chunk + embed + store per chunk
-    // Use private semantic chunker if loaded, else OSS paragraph/sentence fallback
+    // Vector index — chunk + embed + store per chunk.
+    //
+    // Chunk source priority:
+    //  1. Parser-provided subchunks (when registered parser fired) — one chunk
+    //     per logical unit (e.g. one bank transaction). High-signal granularity.
+    //  2. Private semantic chunker if loaded.
+    //  3. OSS paragraph/sentence fallback.
     const chunkFn = this.options.algorithms?.chunkText ?? chunkTextBasic;
-    const chunks = await Promise.resolve(chunkFn(item.content));
+    const chunks =
+      parserSubchunks && parserSubchunks.length > 0
+        ? parserSubchunks
+        : await Promise.resolve(chunkFn(item.content));
 
     // Title + tags prefix — embed these alongside the chunk so the entity tokens
     // (client name, project name, key topics) contribute weight in every chunk's
@@ -227,7 +263,7 @@ export class MemoryStore {
   }
 
   async search(memoryType: string, query: string, limit = 10): Promise<SearchResult[]> {
-    // HYBRID RETRIEVAL — semantic + FTS5 fused via RRF.
+    // HYBRID RETRIEVAL — semantic + FTS5 fused via RRF, then tag-overlap rerank.
     // Pre-fix, recall only ran semantic search. The stress-test showed two failures
     // this fixes: (a) structurally-similar docs collapsed to ~0% r@1 because the
     // embedding model couldn't distinguish "devis A" from "devis B"; (b) natural-
@@ -236,6 +272,7 @@ export class MemoryStore {
     //
     // Fetch wider than `limit` for both paths so RRF + signal_boost have material.
     const overfetch = Math.max(limit * 3, 30);
+    const queryTokens = new Set(tokenizeQuery(query));
     const [semHits, ftsHits] = await Promise.all([
       semanticSearch(memoryType, query, this.options.embeddings, overfetch),
       Promise.resolve(ftsSearchByType(memoryType, query, overfetch)),
@@ -332,13 +369,31 @@ export class MemoryStore {
       // no FTS hit means the model has no real affinity — caller may want to drop it.
       const weak = match === 'semantic' && semSim < WEAK_SEMANTIC_THRESHOLD;
 
+      // Tag-overlap rerank: count how many query tokens appear in this memory's
+      // tags (case-insensitive). Adds a small bonus per match. Tags are
+      // user-/agent-curated short tokens — high signal-to-noise compared to
+      // free-form content. v0.6.1 §R1/R2.
+      let tagBoost = 0;
+      if (queryTokens.size > 0) {
+        const memTags = memory.properties.tags ?? [];
+        for (const tag of memTags) {
+          const tagLower = tag.toLowerCase();
+          for (const qt of queryTokens) {
+            if (tagLower === qt || tagLower.includes(qt) || qt.includes(tagLower)) {
+              tagBoost += BOOST_PER_TAG_MATCH;
+              break; // count each tag at most once per query
+            }
+          }
+        }
+      }
+
       scored.push({
         memory,
         semanticSim: semSim,
         rrf,
-        // Final rank multiplies the fused RRF by the recall signal_boost
+        // Final rank = (fused RRF + tag-overlap boost) × recall signal_boost
         // (importance × decay × pinned × access × confidence × skip_penalty).
-        rank: rrf * signalBoost(s),
+        rank: (rrf + tagBoost) * signalBoost(s),
         snippet,
         match,
         weak,

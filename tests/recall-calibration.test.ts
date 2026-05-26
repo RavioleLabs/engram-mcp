@@ -133,17 +133,16 @@ describe('recall calibration — OSS weights + recency + MMR', () => {
     expect(types.length).toBe(3);
   });
 
-  it('public tool surface has exactly 24 tools (all public — no admin flag)', () => {
+  it('public tool surface has the expected tools (all public — no admin flag)', () => {
     const tools = buildPublicTools(store, mockConfig);
     const names = tools.map((t) => t.name).sort();
-    expect(names).toHaveLength(24);
-    // Check all expected tools are present
     const expected = [
       'analyze_patterns',
       'connect_drive',
       'connect_notion',
       'create_type',
       'delete_type',
+      'describe_types',
       'find_gaps',
       'forget',
       'get',
