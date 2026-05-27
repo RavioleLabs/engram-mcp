@@ -90,10 +90,11 @@ describe('recall calibration — OSS weights + recency + MMR', () => {
     const tools = buildPublicTools(store, mockConfig);
     const recallTool = tools.find((t) => t.name === 'recall')!;
 
-    const results = (await recallTool.handler({
+    const response = (await recallTool.handler({
       query: 'neutrino physics',
       limit: 10,
-    })) as Array<{ id: string; type: string; score: number; title: string }>;
+    })) as { results: Array<{ id: string; type: string; score: number; title: string }> };
+    const results = response.results;
 
     expect(results.length).toBeGreaterThan(0);
 
@@ -120,10 +121,11 @@ describe('recall calibration — OSS weights + recency + MMR', () => {
     const tools = buildPublicTools(store, mockConfig);
     const recallTool = tools.find((t) => t.name === 'recall')!;
 
-    const results = (await recallTool.handler({
+    const response = (await recallTool.handler({
       query: 'neutrino physics',
       limit: 3,
-    })) as Array<{ id: string; type: string }>;
+    })) as { results: Array<{ id: string; type: string }> };
+    const results = response.results;
 
     // With MMR lambda=0.7, we expect at least some type diversity in top 3
     // The 3 notes share 'physics' tag → MMR will penalize the 3rd note
@@ -153,12 +155,18 @@ describe('recall calibration — OSS weights + recency + MMR', () => {
       'list_notion_pages',
       'list_sources',
       'list_types',
+      'pin',
       'recall',
+      'recall_chain',
       'recent',
       'relate',
       'remember',
+      'set_importance',
+      'skip',
       'suggest_properties',
       'summarize_recent',
+      'unpin',
+      'unskip',
       'unwatch',
       'update',
       'watch',

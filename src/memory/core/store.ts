@@ -33,9 +33,6 @@ function buildEmbedPrefix(item: MemoryItem): string {
 // and works well in practice across heterogeneous score distributions.
 const RRF_K = 60;
 
-/** Semantic similarity below this is treated as "no real affinity" — flagged weak. */
-const WEAK_SEMANTIC_THRESHOLD = 0.3;
-
 /**
  * Tag-overlap rerank boost. For each query token that also appears in a hit's
  * tags, the hit gets a small additive boost on its final rank. Cheap O(N×M)
@@ -365,10 +362,6 @@ export class MemoryStore {
       const match: 'semantic' | 'keyword' | 'both' =
         sem && ftsRank !== undefined ? 'both' : sem ? 'semantic' : 'keyword';
 
-      // Weak = neither path gave a strong signal. Semantic-only with sim < 0.3 and
-      // no FTS hit means the model has no real affinity — caller may want to drop it.
-      const weak = match === 'semantic' && semSim < WEAK_SEMANTIC_THRESHOLD;
-
       // Tag-overlap rerank: count how many query tokens appear in this memory's
       // tags (case-insensitive). Adds a small bonus per match. Tags are
       // user-/agent-curated short tokens — high signal-to-noise compared to
@@ -386,6 +379,21 @@ export class MemoryStore {
           }
         }
       }
+
+      // Weak = the result has at least one suspect signal. v0.6.2's restrictive
+      // form (semantic-only AND sim<0.3) flagged only 3.7% of queries, missing
+      // 92% of misses (stress test §R3). The disjunction below covers:
+      //   - abnormally low semantic similarity regardless of path,
+      //   - semantic-only path with a mediocre score (FTS5 had nothing),
+      //   - "both" path where the FTS5 hit looks fortuitous (no tag overlap)
+      //     and semantic is still soft.
+      // Higher false-positive rate, but the per-result envelope plus the
+      // query-level confidence keeps callers correctly cautious.
+      const tagOverlap = tagBoost > 0;
+      const weak =
+        semSim < 0.25 ||
+        (match === 'semantic' && semSim < 0.5) ||
+        (!tagOverlap && match === 'both' && semSim < 0.35);
 
       scored.push({
         memory,

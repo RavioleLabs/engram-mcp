@@ -37,7 +37,20 @@ export function tokenizeQuery(query: string): string[] {
     .trim()
     .toLowerCase();
   if (!cleaned) return [];
-  return cleaned.split(' ').filter((t) => t.length >= 2 && !/^(and|or|not|near)$/i.test(t));
+  // Drop boolean operators + FR/EN interrogatives. FR question scaffolding
+  // ("comment X", "pourquoi Y") used to dilute entity tokens — see stress
+  // test §R2 (doc_tech queries matching "Cours par correspondance" instead
+  // of the named system). Conservative list: only true wh-words, not common
+  // content words like "que" / "est" / "ce".
+  return cleaned
+    .split(' ')
+    .filter(
+      (t) =>
+        t.length >= 2 &&
+        !/^(and|or|not|near|comment|pourquoi|quels?|quelles?|quoi|où|quand|combien|how|what|why|where|when|which|who)$/i.test(
+          t,
+        ),
+    );
 }
 
 /**
