@@ -159,6 +159,11 @@ async function fetchViaYtdlp(
   config: YoutubeConfig,
 ): Promise<YoutubeTranscriptResult> {
   return new Promise((resolve, reject) => {
+    // `--extractor-args player_client=ios,android` switches yt-dlp to the
+    // mobile player APIs which still return captions without needing the JS
+    // runtime. The default `web` client started failing in late 2025 with
+    // "YouTube extraction without a JS runtime has been deprecated" (stress
+    // test §R8). The mobile clients are also faster + less throttled.
     const args = [
       '--write-auto-sub',
       '--write-sub',
@@ -167,6 +172,9 @@ async function fetchViaYtdlp(
       '--skip-download',
       '--sub-format',
       'vtt',
+      '--extractor-args',
+      'youtube:player_client=ios,android',
+      '--no-check-certificates',
       '--output',
       `/tmp/engram-yt-%(id)s.%(ext)s`,
       url,
@@ -175,11 +183,37 @@ async function fetchViaYtdlp(
     let stderr = '';
     child.stderr.on('data', (b) => (stderr += b.toString()));
     child.on('error', (e) =>
-      reject(new Error(`yt-dlp not available: ${e.message}. Install via 'brew install yt-dlp'.`)),
+      reject(
+        new Error(
+          `yt-dlp not installed (${e.message}). Install: brew install yt-dlp (macOS) or pip install yt-dlp.`,
+        ),
+      ),
     );
     child.on('exit', async (code) => {
       if (code !== 0) {
-        reject(new Error(`yt-dlp exit ${code}: ${stderr.slice(-300)}`));
+        const tail = stderr.slice(-300);
+        // Common known failures get a clearer surface so users don't bounce
+        // on a generic exit code.
+        if (/JS runtime has been deprecated/i.test(tail)) {
+          reject(
+            new Error(
+              `yt-dlp exit ${code}: this yt-dlp version requires a JS runtime. ` +
+                `Upgrade: brew upgrade yt-dlp (macOS) or pip install -U yt-dlp. ` +
+                `Then restart engram-mcp. Original: ${tail}`,
+            ),
+          );
+          return;
+        }
+        if (/sign in to confirm.*not a bot/i.test(tail)) {
+          reject(
+            new Error(
+              `yt-dlp exit ${code}: YouTube rate-limit / bot check. Wait a few minutes, ` +
+                `or pass --cookies-from-browser to yt-dlp config. Original: ${tail}`,
+            ),
+          );
+          return;
+        }
+        reject(new Error(`yt-dlp exit ${code}: ${tail}`));
         return;
       }
       try {

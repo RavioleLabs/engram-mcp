@@ -358,7 +358,16 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
           .get(contentHash, type) as { id: string } | undefined;
         if (existing) {
           log.debug(`remember: duplicate detected, returning existing ${existing.id}`);
-          return { id: existing.id, created: false, reason: 'duplicate', wikilinks_extracted: [] };
+          // `cached: true` is the explicit signal benches/observability should
+          // filter on for real throughput numbers — `created: false +
+          // reason: "duplicate"` was easy to miss (stress test §R10).
+          return {
+            id: existing.id,
+            created: false,
+            cached: true,
+            reason: 'duplicate',
+            wikilinks_extracted: [],
+          };
         }
 
         const wikilinks = extractWikilinks(content);
@@ -1409,10 +1418,13 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         const typeName = args.name as string;
         const displayName = (args.display_name as string | undefined) ?? typeName;
 
-        // Idempotency: check if type already exists
+        // Idempotency: check if type already exists. Returns `existed: true`
+        // in addition to `created: false` so callers can tell "no-op because
+        // already there" from "no-op because of an error". Pre-existing
+        // ambiguity flagged in the 2026-05-27 stress test §R9.
         const existing = listCustomTypes().find((t) => t.type_name === typeName);
         if (existing) {
-          return { type_name: existing.type_name, created: false };
+          return { type_name: existing.type_name, created: false, existed: true };
         }
 
         const def = createCustomType({
@@ -1425,7 +1437,7 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         await mod.onBoot({ store });
 
         log.info(`Created custom type ${def.type_name}`);
-        return { type_name: def.type_name, created: true };
+        return { type_name: def.type_name, created: true, existed: false };
       },
     },
 

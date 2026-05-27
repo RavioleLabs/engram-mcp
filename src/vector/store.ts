@@ -32,7 +32,11 @@ export interface SearchHit {
   similarity: number;
 }
 
-const VECTOR_DIM = 768; // nomic-embed-text
+// Configured at boot from EmbeddingsConfig.dimensions. Was hardcoded 768 in
+// v0.6.3 and earlier — locking everyone to nomic-embed-text. v0.6.4 reads it
+// from config so users can switch providers (bge-m3 1024, voyage-3 1024,
+// openai-3-large 3072, etc.) via the setup-embeddings wizard + reindex.
+let _vectorDim = 768;
 
 let _db: Awaited<ReturnType<typeof import('@lancedb/lancedb').connect>> | null = null;
 const _tables = new Map<string, LanceTable>();
@@ -48,11 +52,16 @@ function resolveVectorDir(dataDir: string): string {
 
 let _vectorDir: string | null = null;
 
-export function initVectorStore(dataDir: string): void {
+export function initVectorStore(dataDir: string, dimensions = 768): void {
   _vectorDir = resolveVectorDir(dataDir);
+  _vectorDim = dimensions;
   // Reset cached db + tables when reinitializing (e.g., in tests)
   _db = null;
   _tables.clear();
+}
+
+export function getVectorDim(): number {
+  return _vectorDim;
 }
 
 async function getDb() {
@@ -87,7 +96,7 @@ async function getTable(memoryType: string): Promise<LanceTable> {
           field2: '',
           field3: '',
           field4: '',
-          vector: Array(VECTOR_DIM).fill(0) as number[],
+          vector: Array(_vectorDim).fill(0) as number[],
         },
       ]);
       await table.delete(`id = '__init__'`);
@@ -132,8 +141,8 @@ export async function indexChunksBatch(
 ): Promise<void> {
   if (entries.length === 0) return;
   for (const e of entries) {
-    if (e.vector.length !== VECTOR_DIM) {
-      throw new Error(`Vector dim mismatch: expected ${VECTOR_DIM}, got ${e.vector.length}`);
+    if (e.vector.length !== _vectorDim) {
+      throw new Error(`Vector dim mismatch: expected ${_vectorDim}, got ${e.vector.length}`);
     }
   }
   const table = await getTable(memoryType);
@@ -188,4 +197,45 @@ export async function deleteChunk(memoryType: string, id: string): Promise<void>
 export async function listTables(): Promise<string[]> {
   const db = await getDb();
   return db.tableNames();
+}
+
+/**
+ * Returns the vector dimension actually stored in an existing table, or null
+ * if the table doesn't exist / has no rows yet. Used by the boot-time
+ * mismatch check.
+ */
+export async function getTableDim(tableName: string): Promise<number | null> {
+  const db = await getDb();
+  const existing = await db.tableNames();
+  if (!existing.includes(tableName)) return null;
+  try {
+    const table = await db.openTable(tableName);
+    const rows = await table.query().limit(1).toArray();
+    if (rows.length === 0) return null;
+    const v = (rows[0] as Record<string, unknown>).vector;
+    if (Array.isArray(v)) return v.length;
+    // LanceDB returns Float32Array-like objects in some bindings
+    if (v && typeof v === 'object' && 'length' in v) return (v as { length: number }).length;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Walks the configured vector dir and returns the first table whose stored
+ * dimension differs from the configured one. Used at boot to surface a stale
+ * dim that would otherwise blow up at the next write.
+ */
+export async function detectVectorDimMismatch(
+  configDim: number,
+): Promise<{ table: string; tableDim: number; configDim: number } | null> {
+  const tables = await listTables();
+  for (const t of tables) {
+    const d = await getTableDim(t);
+    if (d !== null && d !== configDim) {
+      return { table: t, tableDim: d, configDim };
+    }
+  }
+  return null;
 }

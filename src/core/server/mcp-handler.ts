@@ -86,7 +86,27 @@ export async function buildEngramRuntime(
   _opts: BuildEngramRuntimeOptions = {},
 ): Promise<EngramRuntime> {
   initDb(config.dataDir);
-  initVectorStore(config.dataDir);
+  initVectorStore(config.dataDir, config.embeddings.dimensions);
+
+  // Soft dim-mismatch check: if any vector table already exists at a
+  // different dimension than the configured embeddings.dimensions, log a
+  // loud warning. Common cause: user changed provider via setup-embeddings
+  // but never ran `engram-mcp rebuild` (or `npm run reindex`). Without
+  // rebuild the new embeddings won't fit the old tables and writes will
+  // throw at indexChunksBatch.
+  try {
+    const { detectVectorDimMismatch } = await import('../../vector/store.js');
+    const mismatch = await detectVectorDimMismatch(config.embeddings.dimensions);
+    if (mismatch) {
+      const log = (await import('../logger.js')).createLogger('boot');
+      log.warn(
+        `Vector dim mismatch: tables at ${mismatch.tableDim}-d, config says ${mismatch.configDim}-d. ` +
+          `Run \`engram-mcp-setup-embeddings\` then \`engram-mcp rebuild\` to migrate, or revert the config.`,
+      );
+    }
+  } catch {
+    // Non-critical — soft check only.
+  }
 
   // Register builtin parsers (BNP releve, etc.) before any module boots so
   // remember() calls during module init also benefit from parsing. Idempotent.
