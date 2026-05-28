@@ -8,6 +8,13 @@ import { createLogger } from '../../logger.js';
 import { extractProperties } from './property-extractor.js';
 import { ftsSearchByType, tokenizeQuery } from './fts.js';
 import { applyParser } from './parsers.js';
+import {
+  classifyIntent,
+  defaultImportance,
+  signalBoost,
+  effectiveConfidence,
+  DEFAULT_SOFT_PURGE_THRESHOLD,
+} from './signals.js';
 import type { EmbeddingsConfig, PropertyExtractionConfig } from '../../config/schema.js';
 import type { MemoryItem, SearchResult } from '../../types.js';
 import type { OpsLogger } from '../../sync/ops-log.js';
@@ -123,7 +130,6 @@ export class MemoryStore {
 
     // Auto-classify intent + default importance (Engram recall signals layer).
     // Agent can override by setting properties.custom.{intent,importance,pinned} at remember() time.
-    const { classifyIntent, defaultImportance } = await import('./signals.js');
     const custom = (item.properties.custom ?? {}) as Record<string, unknown>;
     const intent =
       (typeof custom.intent === 'string' ? custom.intent : null) ??
@@ -275,9 +281,6 @@ export class MemoryStore {
       Promise.resolve(ftsSearchByType(memoryType, query, overfetch)),
     ]);
 
-    const { signalBoost, effectiveConfidence, DEFAULT_SOFT_PURGE_THRESHOLD } = await import(
-      './signals.js'
-    );
     const db = getDb();
 
     // Index semantic hits by memory id (collapsing per-chunk hits — keep best chunk).

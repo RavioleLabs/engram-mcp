@@ -24,6 +24,7 @@ const mockConfig = {
   propertyExtraction: { enabled: false },
   whisper: { model: 'base', language: 'auto' },
   youtube: {},
+  ingest: { allowedPaths: [os.tmpdir()] },
 } as Parameters<typeof buildPublicTools>[1];
 
 describe('public tools — full 24-tool surface', () => {
