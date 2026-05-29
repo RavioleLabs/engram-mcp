@@ -1387,8 +1387,9 @@ export function buildPublicTools(store: MemoryStore, config: EngramConfig): MCPT
         'Once created, use remember({ type: "<name>", ... }) to store items of that type.',
         'Use recall({ types: ["<name>"] }) to search within the type.',
         'WHEN: user wants to track a custom category (books, recipes, contacts, etc.).',
-        'IDEMPOTENT on (name): if the type already exists, returns the existing type with {created: false} — DO NOT retry.',
-        'RETURNS: { type_name, created: true|false }.',
+        'IDEMPOTENT on (name): if the type already exists, returns {created: false, existed: true} — this is SUCCESS, the type is usable. DO NOT retry.',
+        'NOTE: remember({ type: "<name>", ... }) will also auto-create the type if it does not exist yet. Calling create_type first is OPTIONAL — useful when you want to register the type before any data lands.',
+        'RETURNS: { type_name, created: true|false, existed: true|false }. created=true means we just created it; existed=true means it was already there. Treat both as success.',
       ].join(' '),
       inputSchema: {
         type: 'object',

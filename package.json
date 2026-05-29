@@ -1,6 +1,6 @@
 {
   "name": "@raviolelabs/engram-mcp",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "mcpName": "io.github.RavioleLabs/engram-mcp",
   "description": "EngramMCP — local-first semantic memory layer for AI agents",
   "license": "Elastic-2.0",

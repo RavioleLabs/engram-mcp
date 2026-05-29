@@ -142,7 +142,18 @@ export async function indexChunksBatch(
   if (entries.length === 0) return;
   for (const e of entries) {
     if (e.vector.length !== _vectorDim) {
-      throw new Error(`Vector dim mismatch: expected ${_vectorDim}, got ${e.vector.length}`);
+      // Stress test §R14: bare "expected X, got Y" left users guessing where
+      // to look. The most common cause is "config.embeddings was changed to
+      // a different model but vectors weren't rebuilt" — surface the fix
+      // path inline.
+      throw new Error(
+        `Vector dim mismatch: vector store initialised at ${_vectorDim}-d but the ` +
+          `embedding model returned ${e.vector.length}-d. ` +
+          `Likely cause: you changed embeddings.model in ~/.engram/config.json but ` +
+          `engram-mcp is still running with the old store. ` +
+          `Fix: run \`engram-mcp-setup-embeddings\` (choose your model + drop vectors), ` +
+          `restart the LaunchAgent, then \`engram-mcp rebuild\` to re-embed.`,
+      );
     }
   }
   const table = await getTable(memoryType);

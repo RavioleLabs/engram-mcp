@@ -155,6 +155,33 @@ async function main(): Promise<void> {
     };
   } else if (n >= 1 && n <= PRESETS.length) {
     const p = PRESETS[n - 1];
+
+    // Heavy local models eat RAM, add latency, and warm the machine. Stress
+    // test (specs/2026-05-29) showed bge-m3 buying +48 r@1 pts on FR but
+    // costing 3-4 GB RAM, ~5× recall latency, ~3× ingest. Worth it on a
+    // desktop, painful on an 8 GB laptop. Surface the tradeoff once,
+    // up-front, so the user opts in with eyes open.
+    const isHeavyLocal =
+      p.provider === 'ollama' && p.dimensions >= 1024 && p.model !== 'nomic-embed-text';
+    if (isHeavyLocal) {
+      console.log(
+        `\n⚠  ${p.model} delivers significantly better recall on FR / multilingual ` +
+          `content but is heavier:\n` +
+          `   - ~3-4 GB resident Ollama RAM (vs ~500 MB for nomic-embed-text)\n` +
+          `   - ~5× recall latency (~2.5s p95 vs ~500ms)\n` +
+          `   - ~3× ingest time (~1s/doc vs ~300ms)\n` +
+          `   - Machines without active cooling may warm noticeably during the\n` +
+          `     ~10-15 min reindex of a few hundred docs.\n` +
+          `   Recommended: ≥16 GB RAM. Avoid on laptops < 8 GB RAM.\n`,
+      );
+      const ack = (await rl.question(`? Continue with ${p.model}? [Y/n] `)).trim().toLowerCase();
+      if (ack && ack !== 'y' && ack !== 'yes') {
+        console.log('Aborted — no changes made.');
+        rl.close();
+        process.exit(0);
+      }
+    }
+
     newCfg = {
       ...cur,
       provider: p.provider,

@@ -1,7 +1,7 @@
 import { createLogger } from '../../logger.js';
 import { getDb } from '../../db/index.js';
 import { embed } from '../../embeddings/index.js';
-import { indexChunk, deleteChunk, listTables } from '../../vector/store.js';
+import { indexChunk, deleteChunk } from '../../vector/store.js';
 import { chunkText } from './chunker.js';
 import type { EmbeddingsConfig } from '../../config/schema.js';
 
@@ -17,10 +17,16 @@ export async function reindexAll(
   newConfig: EmbeddingsConfig,
   onProgress?: (p: ReindexProgress) => void,
 ): Promise<{ types: string[]; total: number }> {
-  const tables = await listTables();
-  const memoryTypes = tables
-    .filter((t) => t.startsWith('memories_'))
-    .map((t) => t.replace(/^memories_/, ''));
+  // Scan SQLite for memory types, not vector/listTables(). When the user
+  // changes embedding dimensions they typically `rm -rf ~/.engram/vectors`
+  // first — at that point listTables() returns [] and reindex silently
+  // no-ops despite 600+ rows still in SQLite (stress test §R13). The
+  // vector tables get recreated lazily by indexChunk() anyway.
+  const memoryTypes = (
+    getDb().prepare('SELECT DISTINCT type FROM memories ORDER BY type').all() as Array<{
+      type: string;
+    }>
+  ).map((r) => r.type);
 
   let grandTotal = 0;
   for (const type of memoryTypes) {
