@@ -307,8 +307,50 @@ export class MemoryStore {
     // Union of candidate ids from both paths.
     const candidateIds = new Set<string>([...semByMemId.keys(), ...ftsRankByMemId.keys()]);
 
+    // R11 fix (stress test §R11): the previous loop called getById() on every
+    // candidate to pull `content` for the snippet fallback + `properties.tags`
+    // for the tag-overlap rerank. With giants in the index (~400 KB content
+    // per row) this loaded tens of MB per query through SQLite into memory
+    // just to throw most of it away. Now we fetch a minimal row per
+    // candidate (no full content — only SUBSTR(content, 1, 200) for the FTS-
+    // only snippet fallback) and rerank from that, then only hydrate the
+    // surviving top-N with full getById().
+    type RerankRow = {
+      id: string;
+      properties_json: string;
+      content_preview: string;
+      importance: string;
+      pinned: number;
+      skip_penalty: number;
+      access_count: number;
+      last_accessed_at: number | null;
+      confidence: number;
+      created_at: number;
+    };
+
+    const ids = [...candidateIds];
+    const rerankById = new Map<string, RerankRow>();
+    if (ids.length > 0) {
+      // Chunk to stay under SQLite's variable limit (default 32766, plenty
+      // headroom — overfetch is bounded at 30+30=60 per type, but be safe).
+      const CHUNK = 500;
+      for (let off = 0; off < ids.length; off += CHUNK) {
+        const slice = ids.slice(off, off + CHUNK);
+        const placeholders = slice.map(() => '?').join(',');
+        const rows = db
+          .prepare(
+            `SELECT id, properties_json, SUBSTR(content, 1, 200) AS content_preview,
+                    importance, pinned, skip_penalty, access_count,
+                    last_accessed_at, confidence, created_at
+             FROM memories WHERE id IN (${placeholders})`,
+          )
+          .all(...slice) as RerankRow[];
+        for (const r of rows) rerankById.set(r.id, r);
+      }
+    }
+
     type Scored = {
-      memory: MemoryItem;
+      memoryId: string;
       semanticSim: number;
       rrf: number;
       rank: number;
@@ -319,35 +361,17 @@ export class MemoryStore {
     const scored: Scored[] = [];
 
     for (const memoryId of candidateIds) {
-      const memory = this.getById(memoryId);
-      if (!memory) continue;
-
-      const sig = db
-        .prepare(
-          `SELECT importance, pinned, skip_penalty, access_count, last_accessed_at, confidence, created_at
-         FROM memories WHERE id = ?`,
-        )
-        .get(memoryId) as
-        | {
-            importance: string;
-            pinned: number;
-            skip_penalty: number;
-            access_count: number;
-            last_accessed_at: number | null;
-            confidence: number;
-            created_at: number;
-          }
-        | undefined;
-      if (!sig) continue;
+      const row = rerankById.get(memoryId);
+      if (!row) continue;
 
       const s = {
-        importance: (sig.importance as 'high' | 'medium' | 'low') ?? 'medium',
-        pinned: sig.pinned === 1,
-        skip_penalty: sig.skip_penalty ?? 1.0,
-        access_count: sig.access_count ?? 0,
-        last_accessed_at: sig.last_accessed_at,
-        confidence: sig.confidence ?? 1.0,
-        created_at: sig.created_at,
+        importance: (row.importance as 'high' | 'medium' | 'low') ?? 'medium',
+        pinned: row.pinned === 1,
+        skip_penalty: row.skip_penalty ?? 1.0,
+        access_count: row.access_count ?? 0,
+        last_accessed_at: row.last_accessed_at,
+        confidence: row.confidence ?? 1.0,
+        created_at: row.created_at,
       };
       if (effectiveConfidence(s) < DEFAULT_SOFT_PURGE_THRESHOLD) continue;
 
@@ -360,7 +384,7 @@ export class MemoryStore {
       const rrf = semRrf + ftsRrf;
 
       const semSim = sem?.sim ?? 0;
-      const snippet = sem?.snippet ?? memory.content.slice(0, 200);
+      const snippet = sem?.snippet ?? row.content_preview ?? '';
 
       const match: 'semantic' | 'keyword' | 'both' =
         sem && ftsRank !== undefined ? 'both' : sem ? 'semantic' : 'keyword';
@@ -371,7 +395,7 @@ export class MemoryStore {
       // free-form content. v0.6.1 §R1/R2.
       let tagBoost = 0;
       if (queryTokens.size > 0) {
-        const memTags = memory.properties.tags ?? [];
+        const memTags = (JSON.parse(row.properties_json) as { tags?: string[] }).tags ?? [];
         for (const tag of memTags) {
           const tagLower = tag.toLowerCase();
           for (const qt of queryTokens) {
@@ -399,7 +423,7 @@ export class MemoryStore {
         (!tagOverlap && match === 'both' && semSim < 0.35);
 
       scored.push({
-        memory,
+        memoryId,
         semanticSim: semSim,
         rrf,
         // Final rank = (fused RRF + tag-overlap boost) × recall signal_boost
@@ -413,14 +437,25 @@ export class MemoryStore {
 
     scored.sort((a, b) => b.rank - a.rank);
     const surviving = scored.slice(0, limit);
-    if (surviving.length > 0) {
+
+    // Hydrate full MemoryItem only for the survivors. For a typical limit=10
+    // this is 10 full reads instead of up to 60 — saves loading the giants'
+    // content for candidates that didn't make the cut.
+    const hydrated = surviving
+      .map((r) => {
+        const memory = this.getById(r.memoryId);
+        return memory ? { ...r, memory } : null;
+      })
+      .filter((x): x is Scored & { memory: MemoryItem } => x !== null);
+
+    if (hydrated.length > 0) {
       const now = Date.now();
       const bumpStmt = db.prepare(
         `UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
       );
-      for (const r of surviving) bumpStmt.run(now, r.memory.id);
+      for (const r of hydrated) bumpStmt.run(now, r.memory.id);
     }
-    return surviving.map((r) => ({
+    return hydrated.map((r) => ({
       memory: r.memory,
       // `score` stays semantic similarity (0..1) so callers have a calibrated
       // confidence indicator. RRF score is a relative ranking — not useful externally.
