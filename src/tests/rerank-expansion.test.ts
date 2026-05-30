@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { llmRerank, parseOrderJson } from '../memory/core/rerank.js';
 import { expandQuery, parseStringArray } from '../memory/core/query-expansion.js';
 import type { SearchResult } from '../types.js';

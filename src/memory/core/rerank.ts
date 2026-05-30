@@ -47,7 +47,9 @@ export async function llmRerank(
   try {
     if (config.provider === 'anthropic') {
       const order = await rerankAnthropic(query, slice, config);
-      const reordered = order.map((i) => slice[i]).filter((c): c is SearchResult => c != null);
+      const reordered = order
+        .map((i) => slice[i])
+        .filter((c): c is SearchResult => c !== undefined && c !== null);
       // Append candidates the LLM dropped (or that fell outside topN) so we
       // never silently lose results.
       const seen = new Set(reordered.map((c) => c.memory.id));
