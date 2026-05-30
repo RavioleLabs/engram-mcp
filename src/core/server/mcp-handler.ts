@@ -127,6 +127,8 @@ export async function buildEngramRuntime(
   const store = new MemoryStore({
     embeddings: config.embeddings,
     propertyExtraction: config.propertyExtraction,
+    rerank: config.rerank,
+    queryExpansion: config.queryExpansion,
     algorithms,
     prompts,
   });

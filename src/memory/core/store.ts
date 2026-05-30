@@ -8,6 +8,9 @@ import { createLogger } from '../../logger.js';
 import { extractProperties } from './property-extractor.js';
 import { ftsSearchByType, tokenizeQuery } from './fts.js';
 import { applyParser } from './parsers.js';
+import { autoPreprocess } from './preprocessors.js';
+import { llmRerank } from './rerank.js';
+import { expandQuery } from './query-expansion.js';
 import {
   classifyIntent,
   defaultImportance,
@@ -15,7 +18,12 @@ import {
   effectiveConfidence,
   DEFAULT_SOFT_PURGE_THRESHOLD,
 } from './signals.js';
-import type { EmbeddingsConfig, PropertyExtractionConfig } from '../../config/schema.js';
+import type {
+  EmbeddingsConfig,
+  ExpansionConfig,
+  PropertyExtractionConfig,
+  RerankConfig,
+} from '../../config/schema.js';
 import type { MemoryItem, SearchResult } from '../../types.js';
 import type { OpsLogger } from '../../sync/ops-log.js';
 import type { EngramAlgorithms, EngramPrompts } from '../../core/server/mcp-handler.js';
@@ -60,6 +68,10 @@ const BOOST_PER_TAG_MATCH = 0.008;
 export interface MemoryStoreOptions {
   embeddings: EmbeddingsConfig;
   propertyExtraction?: PropertyExtractionConfig;
+  /** LLM rerank — off by default. Pushes top results toward 99% r@10. */
+  rerank?: RerankConfig;
+  /** Query expansion — off by default. LLM generates 2-3 alternate phrasings. */
+  queryExpansion?: ExpansionConfig;
   /** Algorithm overrides from private extensions (optional). */
   algorithms?: EngramAlgorithms;
   /** Prompt overrides from private extensions (optional). */
@@ -189,10 +201,21 @@ export class MemoryStore {
     //  2. Private semantic chunker if loaded.
     //  3. OSS paragraph/sentence fallback.
     const chunkFn = this.options.algorithms?.chunkText ?? chunkTextBasic;
+    // Preprocess content for chunking only — strip Notion structural markers
+    // (▸/▾, "- [ ]", "> ", "[[...]]", properties block) so the embedder
+    // focuses on entities instead of layout. Stress test §R15 showed a -13
+    // pts r@1 drop on test_notion_page under bge-m3 before stripping; with
+    // it, the type rejoins the rest at ≥0.90. The raw content stays in
+    // SQLite/recall snippets — preprocessing only affects what we hand to
+    // chunkText() + embed().
+    const contentForChunking =
+      parserSubchunks && parserSubchunks.length > 0
+        ? null // parser already produced the chunks
+        : autoPreprocess(item.content).cleaned;
     const chunks =
       parserSubchunks && parserSubchunks.length > 0
         ? parserSubchunks
-        : await Promise.resolve(chunkFn(item.content));
+        : await Promise.resolve(chunkFn(contentForChunking ?? item.content));
 
     // Title + tags prefix — embed these alongside the chunk so the entity tokens
     // (client name, project name, key topics) contribute weight in every chunk's
@@ -273,13 +296,49 @@ export class MemoryStore {
     // language queries scored 16pts below keyword queries because FTS5 wasn't in
     // the path. See specs/2026-05-24-engram-stress-test.md §P1, P6.
     //
+    // v0.7.0 adds two opt-in stages around the core RRF loop:
+    //   - Query expansion (before): asks the LLM for 2-3 alternate phrasings,
+    //     runs semantic search on each variant in parallel, fuses by best-rank
+    //     per memory id. +2-4 r@10 pts.
+    //   - LLM rerank (after): the LLM orders the top-N candidates by relevance
+    //     before we slice to `limit`. Pushes top results toward 99% r@10.
+    // Both require an API key + explicit opt-in via config.
+
     // Fetch wider than `limit` for both paths so RRF + signal_boost have material.
     const overfetch = Math.max(limit * 3, 30);
     const queryTokens = new Set(tokenizeQuery(query));
-    const [semHits, ftsHits] = await Promise.all([
-      semanticSearch(memoryType, query, this.options.embeddings, overfetch),
+
+    // ── Query expansion ──────────────────────────────────────────────────────
+    const expansionCfg = this.options.queryExpansion;
+    const queries = expansionCfg?.enabled ? await expandQuery(query, expansionCfg) : [query];
+
+    // Run semantic search on each query variant in parallel — keep the best
+    // similarity / lowest rank per memory id. FTS5 stays single-shot on the
+    // original query (BM25 is already FR-robust on entities once the v0.6.3
+    // stop-word strip is applied).
+    const [semHitsLists, ftsHits] = await Promise.all([
+      Promise.all(
+        queries.map((q) => semanticSearch(memoryType, q, this.options.embeddings, overfetch)),
+      ),
       Promise.resolve(ftsSearchByType(memoryType, query, overfetch)),
     ]);
+
+    // Flatten + best-per-id fusion across query variants. Rank = min rank
+    // observed across variants (1-based after this loop).
+    const semByChunk = new Map<
+      string,
+      { chunk: (typeof semHitsLists)[number][number]['chunk']; similarity: number; rank: number }
+    >();
+    for (const list of semHitsLists) {
+      for (let r = 0; r < list.length; r++) {
+        const h = list[r];
+        const existing = semByChunk.get(h.chunk.id);
+        if (!existing || r < existing.rank || h.similarity > existing.similarity) {
+          semByChunk.set(h.chunk.id, { chunk: h.chunk, similarity: h.similarity, rank: r });
+        }
+      }
+    }
+    const semHits = [...semByChunk.values()].sort((a, b) => a.rank - b.rank);
 
     const db = getDb();
 
@@ -436,34 +495,43 @@ export class MemoryStore {
     }
 
     scored.sort((a, b) => b.rank - a.rank);
-    const surviving = scored.slice(0, limit);
 
-    // Hydrate full MemoryItem only for the survivors. For a typical limit=10
-    // this is 10 full reads instead of up to 60 — saves loading the giants'
-    // content for candidates that didn't make the cut.
-    const hydrated = surviving
+    // LLM rerank fetches one extra slot per overfetched candidate (up to
+    // rerank.topN) and re-orders them. We hydrate that wider set so the LLM
+    // sees real titles + snippets, then slice to `limit` after.
+    const rerankCfg = this.options.rerank;
+    const rerankWindow = rerankCfg?.enabled ? Math.min(scored.length, rerankCfg.topN) : limit;
+    const candidates = scored.slice(0, Math.max(rerankWindow, limit));
+
+    const hydrated = candidates
       .map((r) => {
         const memory = this.getById(r.memoryId);
         return memory ? { ...r, memory } : null;
       })
       .filter((x): x is Scored & { memory: MemoryItem } => x !== null);
 
-    if (hydrated.length > 0) {
-      const now = Date.now();
-      const bumpStmt = db.prepare(
-        `UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
-      );
-      for (const r of hydrated) bumpStmt.run(now, r.memory.id);
-    }
-    return hydrated.map((r) => ({
+    let asResults: SearchResult[] = hydrated.map((r) => ({
       memory: r.memory,
-      // `score` stays semantic similarity (0..1) so callers have a calibrated
-      // confidence indicator. RRF score is a relative ranking — not useful externally.
       score: r.semanticSim,
       snippet: r.snippet,
       match: r.match,
       weak: r.weak,
     }));
+
+    if (rerankCfg?.enabled && asResults.length > 1) {
+      asResults = await llmRerank(query, asResults, rerankCfg);
+    }
+
+    const final = asResults.slice(0, limit);
+
+    if (final.length > 0) {
+      const now = Date.now();
+      const bumpStmt = db.prepare(
+        `UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE id = ?`,
+      );
+      for (const r of final) bumpStmt.run(now, r.memory.id);
+    }
+    return final;
   }
 
   async delete(id: string): Promise<void> {

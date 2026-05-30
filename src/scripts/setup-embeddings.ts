@@ -31,22 +31,22 @@ interface Preset {
 
 const PRESETS: Preset[] = [
   {
-    label: 'nomic-embed-text (default)',
-    provider: 'ollama',
-    model: 'nomic-embed-text',
-    dimensions: 768,
-    notes: 'Free, local. EN strong, FR moderate. Original default.',
-    needsApiKey: false,
-    ollamaPull: 'nomic-embed-text',
-  },
-  {
-    label: 'bge-m3 — multilingual',
+    label: 'bge-m3 — multilingual (default since v0.7.0)',
     provider: 'ollama',
     model: 'bge-m3',
     dimensions: 1024,
-    notes: 'Free, local. Recommended for FR / multilingual content.',
+    notes: 'Free, local. +48 r@1 pts on FR vs nomic. Needs ~3-4 GB RAM.',
     needsApiKey: false,
     ollamaPull: 'bge-m3',
+  },
+  {
+    label: 'nomic-embed-text — light',
+    provider: 'ollama',
+    model: 'nomic-embed-text',
+    dimensions: 768,
+    notes: 'Free, local. ~500 MB RAM. EN strong, FR moderate. Pre-v0.7.0 default.',
+    needsApiKey: false,
+    ollamaPull: 'nomic-embed-text',
   },
   {
     label: 'mxbai-embed-large',
@@ -116,16 +116,42 @@ async function main(): Promise<void> {
     `Current: provider=${cur.provider}, model=${cur.model}, dimensions=${cur.dimensions ?? 768}\n`,
   );
 
+  // Recommend based on physical RAM. bge-m3 wants ~3-4 GB resident Ollama
+  // + we want headroom for the host OS + other apps. Below 8 GB the
+  // experience tips from "heavy but fine" to "swap thrashing" — recommend
+  // nomic for those machines (stress test §R12).
+  const totalGB = Math.round(os.totalmem() / 1024 ** 3);
+  const recommendNomic = totalGB > 0 && totalGB < 8;
+  if (recommendNomic) {
+    console.log(
+      `Detected ${totalGB} GB RAM — recommending nomic-embed-text (option 1) for this machine.\n` +
+        `bge-m3 requires ~3-4 GB resident; below 8 GB total RAM you may see swap thrashing.\n`,
+    );
+  } else if (totalGB >= 16) {
+    console.log(
+      `Detected ${totalGB} GB RAM — bge-m3 (option 2) is the recommended pick for FR / multilingual content.\n`,
+    );
+  }
+
   console.log('Choose an embedding model:\n');
   PRESETS.forEach((p, i) => {
-    console.log(`  ${i + 1}. ${p.label}`);
+    const tag =
+      p.model === 'bge-m3' && !recommendNomic
+        ? '  ★ recommended'
+        : p.model === 'nomic-embed-text' && recommendNomic
+        ? '  ★ recommended for this machine'
+        : '';
+    console.log(`  ${i + 1}. ${p.label}${tag}`);
     console.log(`     dim=${p.dimensions}  |  ${p.notes}`);
   });
   console.log(`  ${PRESETS.length + 1}. Custom (advanced — provider, model, dim by hand)`);
   console.log(`  0. Cancel\n`);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const choice = (await rl.question('? Choice [1]: ')).trim() || '1';
+  // PRESETS[0] is now bge-m3, PRESETS[1] is nomic — recommendNomic flips
+  // the default from "1" (bge-m3) to "2" (nomic).
+  const defaultChoice = recommendNomic ? '2' : '1';
+  const choice = (await rl.question(`? Choice [${defaultChoice}]: `)).trim() || defaultChoice;
   const n = parseInt(choice, 10);
 
   if (n === 0 || Number.isNaN(n)) {

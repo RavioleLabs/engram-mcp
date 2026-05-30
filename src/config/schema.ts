@@ -5,12 +5,15 @@ export const EmbeddingsConfigSchema = z.object({
     .enum(['ollama', 'engram', 'engram-hosted', 'voyage', 'openai', 'openai-compatible'])
     .default('ollama'),
   baseUrl: z.string().url().optional(),
-  // Default to nomic-embed-text — the model the installer pulls via Ollama.
-  // Without a default, configs missing this field fail Zod parse → engram-mcp
-  // crashes immediately (exit 78) on startup.
-  model: z.string().default('nomic-embed-text'),
+  // Default to bge-m3 — multilingual, 1024-d, recommended in stress test v3
+  // (specs/2026-05-29-…-v3) for FR/multilingual content (+48 r@1 pts vs
+  // nomic-embed-text). install.sh auto-detects RAM and writes the explicit
+  // model when running on <8 GB machines (drops back to nomic), so this
+  // default fires only for programmatic usage or hand-rolled configs that
+  // omit the embeddings section entirely.
+  model: z.string().default('bge-m3'),
   apiKey: z.string().optional(),
-  dimensions: z.number().int().positive().default(768),
+  dimensions: z.number().int().positive().default(1024),
 });
 
 export type EmbeddingsConfig = z.infer<typeof EmbeddingsConfigSchema>;
@@ -32,6 +35,38 @@ export const PropertyExtractionConfigSchema = z.object({
 });
 
 export type PropertyExtractionConfig = z.infer<typeof PropertyExtractionConfigSchema>;
+
+/**
+ * LLM rerank — second-stage ranking that asks an LLM to order RRF top
+ * candidates by relevance. Off by default; requires an API key. Pushes
+ * r@10 toward ~99% on FR fixtures (stress test §TODO-6, target 99%).
+ */
+export const RerankConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z.enum(['anthropic', 'cohere', 'openai']).default('anthropic'),
+  model: z.string().default('claude-haiku-4-5'),
+  apiKey: z.string().optional(),
+  topN: z.number().int().positive().default(20),
+  timeoutMs: z.number().int().positive().default(15_000),
+});
+
+export type RerankConfig = z.infer<typeof RerankConfigSchema>;
+
+/**
+ * Query expansion — generates 2-3 alternate phrasings of the user query
+ * via LLM, runs semantic search on each variant in parallel, fuses by
+ * RRF. Off by default; same API key as rerank. Worth +2-4 pts r@10.
+ */
+export const ExpansionConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z.enum(['anthropic', 'openai']).default('anthropic'),
+  model: z.string().default('claude-haiku-4-5'),
+  apiKey: z.string().optional(),
+  variants: z.number().int().min(1).max(5).default(3),
+  timeoutMs: z.number().int().positive().default(10_000),
+});
+
+export type ExpansionConfig = z.infer<typeof ExpansionConfigSchema>;
 
 export const DriveOAuthSchema = z
   .object({
@@ -134,14 +169,16 @@ export type SyncConfig = z.infer<typeof SyncConfigSchema>;
 
 export const EngramConfigSchema = z.object({
   dataDir: z.string().default('~/.engram'),
-  // Default to local Ollama with nomic-embed-text (what install.sh sets up).
-  // Without a default here, a config that only contains engramAccount fails
-  // Zod parse → engram-mcp crashes (exit 78) immediately on launch.
+  // Default to local Ollama with bge-m3 (what install.sh sets up on ≥8 GB
+  // machines — drops back to nomic-embed-text on lower-RAM hosts via
+  // explicit config.json). Without a default here a config that only
+  // contains engramAccount fails Zod parse → engram-mcp crashes (exit 78)
+  // immediately on launch.
   embeddings: EmbeddingsConfigSchema.default({
     provider: 'ollama',
     baseUrl: 'http://localhost:11434',
-    model: 'nomic-embed-text',
-    dimensions: 768,
+    model: 'bge-m3',
+    dimensions: 1024,
   }),
   drive: DriveOAuthSchema,
   notion: NotionOAuthSchema,
@@ -170,6 +207,20 @@ export const EngramConfigSchema = z.object({
       allowedPaths: z.array(z.string()).default([]),
     })
     .default({ allowedPaths: [] }),
+  rerank: RerankConfigSchema.default({
+    enabled: false,
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    topN: 20,
+    timeoutMs: 15_000,
+  }),
+  queryExpansion: ExpansionConfigSchema.default({
+    enabled: false,
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    variants: 3,
+    timeoutMs: 10_000,
+  }),
   // Plan K addition — optional; absence = not paired, all cloud features dormant
   engramAccount: EngramAccountConfigSchema,
   // Plan N addition — optional; ops-log bidirectional sync
@@ -183,8 +234,8 @@ export const defaultConfig: EngramConfig = {
   embeddings: {
     provider: 'ollama',
     baseUrl: 'http://localhost:11434',
-    model: 'nomic-embed-text',
-    dimensions: 768,
+    model: 'bge-m3',
+    dimensions: 1024,
   },
   propertyExtraction: {
     enabled: false,
@@ -213,4 +264,18 @@ export const defaultConfig: EngramConfig = {
   },
   mcp: { stdio: true, httpPort: 7777 },
   ingest: { allowedPaths: [] },
+  rerank: {
+    enabled: false,
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    topN: 20,
+    timeoutMs: 15_000,
+  },
+  queryExpansion: {
+    enabled: false,
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    variants: 3,
+    timeoutMs: 10_000,
+  },
 };

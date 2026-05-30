@@ -315,11 +315,40 @@ install_ollama || OLLAMA_OK=false
 [ "$OLLAMA_OK" = "true" ] && ok "Ollama ready (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
 
 # ── Step 5: Pull embeddings model ────────────────────────────────────────────
+#
+# RAM-aware default selection:
+#   ≥ 8 GB RAM → bge-m3 (1024-d, multilingual, +48 r@1 pts on FR fixtures
+#                vs nomic, ~3-4 GB resident Ollama)
+#   <  8 GB RAM → nomic-embed-text (768-d, ~500 MB resident, EN strong,
+#                FR moderate — safer on low-memory machines)
+# Users can switch later via `engram-mcp-setup-embeddings`.
 
-step "Pulling embeddings model (nomic-embed-text, ~274 MB)"
+if [ "$PLATFORM" = "darwin" ]; then
+  TOTAL_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+elif [ "$PLATFORM" = "linux" ]; then
+  TOTAL_BYTES=$(awk '/MemTotal/ {print $2 * 1024; exit}' /proc/meminfo 2>/dev/null || echo 0)
+else
+  TOTAL_BYTES=0
+fi
+TOTAL_GB=$(( TOTAL_BYTES / 1073741824 ))
+if [ "$TOTAL_GB" -ge 8 ]; then
+  DEFAULT_MODEL="bge-m3"
+  DEFAULT_DIM=1024
+  MODEL_SIZE_NOTE="~1.3 GB"
+else
+  DEFAULT_MODEL="nomic-embed-text"
+  DEFAULT_DIM=768
+  MODEL_SIZE_NOTE="~274 MB"
+fi
+
+step "Pulling embeddings model (${DEFAULT_MODEL}, ${MODEL_SIZE_NOTE})"
 STEP_TS=$(date +%s)
 
 if [ "$OLLAMA_OK" = "true" ]; then
+  if [ "$TOTAL_GB" -gt 0 ]; then
+    info "Detected ${TOTAL_GB} GB RAM → picking ${DEFAULT_MODEL}"
+  fi
+
   # Start Ollama server in background if not already running
   if ! pgrep -f 'ollama serve\|/Applications/Ollama' >/dev/null 2>&1; then
     info "Starting Ollama server in background..."
@@ -331,14 +360,33 @@ if [ "$OLLAMA_OK" = "true" ]; then
     sleep 3
   fi
 
-  if ollama list 2>&1 | grep -q '^nomic-embed-text'; then
-    info "Model nomic-embed-text already pulled"
+  if ollama list 2>&1 | grep -q "^${DEFAULT_MODEL}"; then
+    info "Model ${DEFAULT_MODEL} already pulled"
   else
-    info "Running: ollama pull nomic-embed-text"
+    info "Running: ollama pull ${DEFAULT_MODEL}"
     printf '\n'
-    ollama pull nomic-embed-text 2>&1
+    ollama pull "${DEFAULT_MODEL}" 2>&1
   fi
   ok "Embeddings model ready (${YELLOW}$(elapsed_since $STEP_TS)s${RESET})"
+
+  # Persist the selection so the engram-mcp service uses it at boot. We
+  # only write minimal embedding fields — the rest of the config falls
+  # back to Zod defaults.
+  mkdir -p "$HOME/.engram"
+  CONFIG_FILE="$HOME/.engram/config.json"
+  if [ ! -f "$CONFIG_FILE" ]; then
+    cat > "$CONFIG_FILE" <<JSON
+{
+  "embeddings": {
+    "provider": "ollama",
+    "model": "${DEFAULT_MODEL}",
+    "dimensions": ${DEFAULT_DIM}
+  }
+}
+JSON
+    chmod 600 "$CONFIG_FILE"
+    info "Wrote embedding defaults to ${CONFIG_FILE}"
+  fi
 else
   warn "Skipped (Ollama not available)"
 fi
