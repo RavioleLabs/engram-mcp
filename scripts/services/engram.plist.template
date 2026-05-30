@@ -9,7 +9,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.ravolelabs.engram</string>
+  <string>com.raviolelabs.engram-mcp</string>
 
   <key>ProgramArguments</key>
   <array>

@@ -136,7 +136,12 @@ async function main() {
     const { spawnSync } = await import('node:child_process');
     if (process.platform === 'darwin') {
       const uid = process.getuid?.() ?? 0;
-      const r = spawnSync('launchctl', ['kickstart', '-k', `gui/${uid}/com.ravolelabs.engram`]);
+      // Try the current label first, fall back to the legacy typo'd label
+      // so users mid-upgrade still get a restart.
+      let r = spawnSync('launchctl', ['kickstart', '-k', `gui/${uid}/com.raviolelabs.engram-mcp`]);
+      if (r.status !== 0) {
+        r = spawnSync('launchctl', ['kickstart', '-k', `gui/${uid}/com.ravolelabs.engram`]);
+      }
       if (r.status === 0) console.log('  ✓ Restarted background service — bridge now connecting');
     } else if (process.platform === 'linux') {
       const r = spawnSync('systemctl', ['--user', 'restart', 'engram.service']);

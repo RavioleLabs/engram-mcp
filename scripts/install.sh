@@ -390,8 +390,19 @@ install_service() {
 
   if [ "$PLATFORM" = "darwin" ]; then
     PLIST_DIR="$HOME/Library/LaunchAgents"
-    PLIST_FILE="$PLIST_DIR/com.ravolelabs.engram.plist"
+    PLIST_FILE="$PLIST_DIR/com.raviolelabs.engram-mcp.plist"
+    PLIST_FILE_LEGACY="$PLIST_DIR/com.ravolelabs.engram.plist"
     mkdir -p "$PLIST_DIR"
+
+    # Legacy label "com.ravolelabs.engram" (typo, missing 'i') was used
+    # through v0.6.8. Migrate cleanly: unload + remove the old plist so we
+    # don't end up with two services racing for port 7777.
+    if [ -f "$PLIST_FILE_LEGACY" ]; then
+      launchctl bootout "gui/$UID" "$PLIST_FILE_LEGACY" 2>/dev/null || true
+      launchctl unload "$PLIST_FILE_LEGACY" 2>/dev/null || true
+      rm -f "$PLIST_FILE_LEGACY"
+      info "Removed legacy LaunchAgent (com.ravolelabs.engram)"
+    fi
 
     # Resolve node + serve.js to absolute paths. The plist runs in launchd's
     # env (not the user's shell), so a #!/usr/bin/env node shebang would pick
@@ -419,7 +430,7 @@ install_service() {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.ravolelabs.engram</string>
+  <string>com.raviolelabs.engram-mcp</string>
   <key>ProgramArguments</key>
   <array>
     <string>${NODE_PATH_ABS}</string>
@@ -669,7 +680,7 @@ PY
     # is already running (started in step 7 before pairing) without tokens
     # and would just sit there with the bridge dormant.
     if [ "$PLATFORM" = "darwin" ]; then
-      if launchctl kickstart -k "gui/$UID/com.ravolelabs.engram" 2>/dev/null; then
+      if launchctl kickstart -k "gui/$UID/com.raviolelabs.engram-mcp" 2>/dev/null; then
         info "Restarted background service — bridge now connecting"
       fi
     elif [ "$PLATFORM" = "linux" ]; then

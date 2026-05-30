@@ -11,13 +11,13 @@
  *   engram-mcp-service uninstall
  *
  * Platform dispatch:
- *   macOS  — launchctl (~/Library/LaunchAgents/com.ravolelabs.engram.plist)
+ *   macOS  — launchctl (~/Library/LaunchAgents/com.raviolelabs.engram-mcp.plist)
  *   Linux  — systemctl --user engram.service
  *   Windows — nssm (service name: EngramMCP)
  */
 
 import { execSync, spawnSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir, platform } from 'os';
@@ -26,8 +26,12 @@ import { homedir, platform } from 'os';
 
 const HOME = homedir();
 const PLATFORM = platform(); // 'darwin' | 'linux' | 'win32'
-const LABEL = 'com.ravolelabs.engram';
+const LABEL = 'com.raviolelabs.engram-mcp';
+// Legacy label "com.ravolelabs.engram" (typo, missing 'i') was used through
+// v0.6.8. Tolerate it on status/restart and clean it up on install/uninstall.
+const LEGACY_LABEL = 'com.ravolelabs.engram';
 const PLIST_PATH = join(HOME, 'Library', 'LaunchAgents', `${LABEL}.plist`);
+const LEGACY_PLIST_PATH = join(HOME, 'Library', 'LaunchAgents', `${LEGACY_LABEL}.plist`);
 const SYSTEMD_PATH = join(HOME, '.config', 'systemd', 'user', 'engram.service');
 const LOG_DIR = join(HOME, '.engram', 'logs');
 const TEMPLATE_DIR = join(
@@ -74,8 +78,24 @@ function templateSubstitute(template: string, vars: Record<string, string>): str
 
 // ── macOS (launchctl) ────────────────────────────────────────────────────────
 
+function macosCleanupLegacy(): void {
+  if (existsSync(LEGACY_PLIST_PATH)) {
+    run(`launchctl bootout "gui/$(id -u)" "${LEGACY_PLIST_PATH}" 2>/dev/null || true`, {
+      silent: true,
+    });
+    run(`launchctl unload "${LEGACY_PLIST_PATH}" 2>/dev/null || true`, { silent: true });
+    try {
+      unlinkSync(LEGACY_PLIST_PATH);
+      console.log(`Removed legacy LaunchAgent (${LEGACY_LABEL})`);
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
 const macos = {
   install(): void {
+    macosCleanupLegacy();
     const binaryPath = resolveBinaryPath();
     const templatePath = join(TEMPLATE_DIR, 'engram.plist.template');
     if (!existsSync(templatePath)) {
@@ -115,7 +135,7 @@ const macos = {
   },
 
   status(): void {
-    const ok = run(`launchctl list | grep "${LABEL}"`, { silent: false });
+    const ok = run(`launchctl list | grep -E "${LABEL}|${LEGACY_LABEL}"`, { silent: false });
     if (!ok) console.log('Service not running (not found in launchctl list).');
   },
 
@@ -125,6 +145,7 @@ const macos = {
       run(`rm -f "${PLIST_PATH}"`);
       console.log(`Removed ${PLIST_PATH}`);
     }
+    macosCleanupLegacy();
     console.log('LaunchAgent removed. EngramMCP will no longer start on login.');
   },
 };

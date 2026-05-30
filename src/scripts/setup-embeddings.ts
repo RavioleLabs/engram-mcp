@@ -278,8 +278,10 @@ async function main(): Promise<void> {
 }
 
 function tryRestartLaunchAgent(): void {
-  // Best effort — typo'd plist label "com.ravolelabs.engram" remains in the
-  // install.sh script as of v0.6.3. Try both.
+  // Best effort — typo'd plist label "com.ravolelabs.engram" was used
+  // through v0.6.8; current installs use "com.raviolelabs.engram-mcp". Try
+  // current first, fall back to legacy so users mid-upgrade still get a
+  // clean restart.
   for (const label of ['com.raviolelabs.engram-mcp', 'com.ravolelabs.engram']) {
     const plist = path.join(os.homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
     if (fs.existsSync(plist)) {
