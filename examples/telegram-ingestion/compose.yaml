@@ -1,0 +1,27 @@
+services:
+  ingestion:
+    build:
+      context: ../..
+      dockerfile: examples/telegram-ingestion/Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 15s
+    volumes:
+      - ./config.local.json:/config/config.json:ro
+      - checkpoint:/data
+    secrets:
+      - telegram_bot_token
+      - engram_product_write
+    logging:
+      driver: json-file
+      options: { max-size: '5m', max-file: '2' }
+secrets:
+  telegram_bot_token:
+    file: ./secrets/telegram-bot-token
+  engram_product_write:
+    file: ./secrets/engram-product-write
+volumes:
+  checkpoint:

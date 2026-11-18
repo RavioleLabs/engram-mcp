@@ -1,0 +1,13 @@
+{
+  "name": "@raviolelabs/engram-cloud-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scoped Engram Cloud ingestion, retrieval and local MCP bridge",
+  "license": "Elastic-2.0",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "exports": { ".": { "types": "./src/index.d.ts", "import": "./src/index.mjs" } },
+  "bin": { "engram-cloud-mcp": "bin/mcp.mjs" },
+  "scripts": { "test": "node --test tests/*.test.mjs" },
+  "dependencies": { "@modelcontextprotocol/sdk": "1.32.2" }
+}

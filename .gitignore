@@ -41,6 +41,8 @@ Thumbs.db
 !/README.md
 !/SKILL.md
 !/SECURITY.md
+!packages/cloud-sdk/README.md
+!examples/telegram-ingestion/README.md
 docs/
 
 # Editor
