@@ -1,0 +1,34 @@
+name: Cloud SDK and Telegram ingestion
+on:
+  pull_request:
+    paths:
+      [
+        'packages/cloud-sdk/**',
+        'examples/telegram-ingestion/**',
+        '.github/workflows/cloud-ingestion.yml',
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        'packages/cloud-sdk/**',
+        'examples/telegram-ingestion/**',
+        '.github/workflows/cloud-ingestion.yml',
+      ]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: packages/cloud-sdk/package-lock.json
+      - run: npm ci --prefix packages/cloud-sdk
+      - run: node --test packages/cloud-sdk/tests/*.test.mjs examples/telegram-ingestion/tests/*.test.mjs
+      - name: Build customer-operated bot image
+        run: docker build -f examples/telegram-ingestion/Dockerfile -t engram-telegram-ingestion:test .

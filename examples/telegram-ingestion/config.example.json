@@ -1,0 +1,14 @@
+{
+  "endpoint": "https://YOUR-ENGRAM-CLOUD-HOST",
+  "botId": "123456789",
+  "stateFile": "/data/checkpoint.json",
+  "mappings": [
+    {
+      "chatId": "-1001234567890",
+      "topicId": null,
+      "keyFile": "/run/secrets/engram_product_write",
+      "mode": "command",
+      "command": "remember"
+    }
+  ]
+}

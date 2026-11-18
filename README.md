@@ -245,3 +245,9 @@ Issues, PRs, and Discord chat welcome.
 ## Security
 
 Found a vulnerability? See [SECURITY.md](SECURITY.md) for responsible-disclosure guidelines. Please do **not** open public issues for security bugs — email `security@raviolelabs.com` instead.
+
+## Company-operated cloud ingestion
+
+Engram Cloud now has a separate company/team/personal context service. Use the [Cloud SDK and MCP bridge](packages/cloud-sdk/README.md) to write versioned records or connect an agent with a scoped key. The [Telegram ingestion template](examples/telegram-ingestion/README.md) lets each company run its own bot and keep its Telegram token on its infrastructure.
+
+This initial cloud path uses encrypted-at-rest storage and lexical retrieval, separate from the local semantic engine. The guides describe access boundaries, hosting requirements and current limits. No bot or collection is enabled by installing this repository.
