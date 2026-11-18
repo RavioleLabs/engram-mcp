@@ -11,7 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { EngramCloud } from './packages/cloud-sdk/src/index.mjs';
 
 const memory = new EngramCloud({
-  endpoint: 'https://engram-contexts.leraviole.workers.dev',
+  endpoint: 'https://engram-mcp.com',
   key: (await readFile('/run/secrets/engram-write-key', 'utf8')).trim(),
 });
 
@@ -49,7 +49,7 @@ Configure a stdio server in your MCP client using the equivalent of:
       "command": "node",
       "args": ["/absolute/path/engram-mcp/packages/cloud-sdk/bin/mcp.mjs"],
       "env": {
-        "ENGRAM_ENDPOINT": "https://engram-contexts.leraviole.workers.dev",
+        "ENGRAM_ENDPOINT": "https://engram-mcp.com",
         "ENGRAM_KEY_FILE": "/absolute/path/to/private/engram-read-key"
       }
     }
